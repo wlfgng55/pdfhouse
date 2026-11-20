@@ -118,9 +118,10 @@
   .side-act .btn { width: 100%; font-size: .85rem; padding: 6px 8px; }
   .toast-btn { margin-left: 10px; background: none; border: 1.5px solid currentColor; color: inherit; border-radius: 7px; padding: 3px 10px; cursor: pointer; font-weight: 700; }
   #stage { flex: 1; overflow: auto; padding: 24px; }
-  #pageBox { position: relative; margin: 0 auto; width: max-content; background: #fff; box-shadow: 0 6px 30px rgba(10,15,40,.28); }
-  #pageBox canvas { display: block; }
-  #overlay { position: absolute; inset: 0; }
+  .pageBox { position: relative; margin: 0 auto 28px; width: max-content; background: #fff; box-shadow: 0 6px 30px rgba(10,15,40,.28); }
+  .pageBox canvas { display: block; }
+  #overlay { position: absolute; inset: 0; z-index: 2; }
+  #pagesContainer { width: 100%; min-height: 100%; padding-bottom: 1px; }
   /* Normal seçim modunda fare metin katmanına ulaşabilsin */
 #overlay[data-tool="select"] {
   pointer-events: none;
@@ -152,22 +153,14 @@
 }
   .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
   .textLayer ::selection { background: rgba(255,222,60,.6); }
- /* Aktif arama sonucunun vurgusu */
-#searchHighlights {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 10;
-}
-
+  /* Arama sonucu vurgusu */
 .search-hit {
-  position: absolute;
-  background: rgba(255, 220, 40, 0.45);
-  border: 1px solid rgba(230, 170, 0, 0.35);
+  background: rgba(255, 190, 0, 0.75);
+  color: transparent !important;
   border-radius: 2px;
-  pointer-events: none;
+  outline: 1px solid rgba(220, 140, 0, 0.8);
 }
-  #pageBox[data-tool="highlight"] .textLayer { pointer-events: auto; user-select: text; -webkit-user-select: text; }
+  .pageBox[data-tool="highlight"] .textLayer { pointer-events: auto; user-select: text; -webkit-user-select: text; }
 
   /* ---------- Eklenen öğeler ---------- */
   .ann { position: absolute; }
@@ -273,7 +266,7 @@
     </div>
   </aside>
   <section id="stage">
-    <div id="pageBox"><canvas id="cv" width="10" height="10"></canvas><div id="overlay" data-tool="select"></div></div>
+    <div id="pagesContainer"><div class="pageBox" id="pageBox"><canvas id="cv" width="10" height="10"></canvas><div id="overlay" data-tool="select"></div></div></div>
   </section>
 
   <div id="empty">
@@ -327,7 +320,9 @@
   const S = { bytes: null, name: "", doc: null, page: 1, scale: 1.2, pw: 0, ph: 0,
               tool: "select", color: "#111111", size: 16, pen: 3, anns: {}, sel: null };
   let uid = 0, renderId = 0;
-  const overlay = $("overlay");
+  let overlay = $("overlay");
+  let pageBoxes = [];
+  let scrollTick = 0;
 
   function toast(msg, err) {
     const t = $("toast");
@@ -364,7 +359,9 @@
       const p1 = await doc.getPage(1);
       S.scale = Math.min(1.5, ($("stage").clientWidth - 52) / p1.getViewport({ scale: 1 }).width);
       buildThumbs();
-      showPage(1);
+      $("stage").scrollTop = 0;
+      await renderAllPages();
+      await showPage(1);
     } catch (err) {
       toast("PDF açılamadı. Dosya bozuk ya da şifreli olabilir.", true);
     }
@@ -398,6 +395,7 @@
   async function reloadDoc(bytes, goPage) {
     S.bytes = bytes;
     S.doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+    pageBoxes = []; $("pagesContainer").innerHTML = "";
     buildThumbs();
     await showPage(Math.min(Math.max(1, goPage), S.doc.numPages));
   }
@@ -443,37 +441,23 @@
   };
 
   /* ---------- Metin katmanı ve otomatik vurgu ---------- */
-async function buildTextLayer(page, cv) {
-  const box = $("pageBox");
-  box.querySelectorAll(".textLayer").forEach((n) => n.remove());
-
-  const tl = document.createElement("div");
-  tl.className = "textLayer";
-  tl.style.width = cv.style.width;
-  tl.style.height = cv.style.height;
-  tl.style.setProperty("--scale-factor", S.scale);
-
-  box.insertBefore(tl, overlay);
-
-  const vp = page.getViewport({ scale: S.scale });
-
-  try {
-    // Arama ile aynı metin kaynağını kullan
-    const textContent = await page.getTextContent();
-
-    // Arama sonuçlarında kullanmak üzere sakla
-    tl._textItems = textContent.items;
-
-    await pdfjsLib.renderTextLayer({
-      textContent: textContent,
-      container: tl,
-      viewport: vp
-    }).promise;
-
-  } catch (e) {
-    tl.innerHTML = "";
+  async function buildTextLayer(page, cv, box, targetOverlay) {
+    box.querySelectorAll(".textLayer").forEach((n) => n.remove());
+    const tl = document.createElement("div");
+    tl.className = "textLayer";
+    tl.style.width = cv.style.width; tl.style.height = cv.style.height;
+    tl.style.setProperty("--scale-factor", S.scale);
+    box.appendChild(tl);
+    const vp = page.getViewport({ scale: S.scale });
+    try {
+      await pdfjsLib.renderTextLayer({ textContentSource: page.streamTextContent(), container: tl, viewport: vp }).promise;
+    } catch (e) {
+      try {
+        tl.innerHTML = "";
+        await pdfjsLib.renderTextLayer({ textContent: await page.getTextContent(), container: tl, viewport: vp }).promise;
+      } catch (e2) { /* metin yoksa (taranmış PDF) sürükleyerek kutu vurgusu yapılır */ }
+    }
   }
-}
 
   /* Seçili metnin satır satır kutularını PDF birimine (pt) çevirir */
   function selectionRects() {
@@ -519,7 +503,7 @@ async function buildTextLayer(page, cv) {
   }
 
   let hlStart = null;
-  $("pageBox").addEventListener("pointerdown", (e) => {
+  $("stage").addEventListener("pointerdown", (e) => {
     if (S.tool === "highlight" && e.target.closest(".textLayer")) hlStart = { x: e.clientX, y: e.clientY };
   });
   document.addEventListener("pointerup", (e) => {
@@ -528,34 +512,54 @@ async function buildTextLayer(page, cv) {
     if (S.tool === "highlight") setTimeout(() => finishHighlight(s0, e), 0);
   });
 
-  /* ---------- Sayfa gösterme ---------- */
-  async function showPage(n) {
-    S.page = n; S.sel = null;
-    const id = ++renderId;
-    const page = await S.doc.getPage(n);
-    if (id !== renderId) return;
-    const v1 = page.getViewport({ scale: 1 });
-    S.pw = v1.width; S.ph = v1.height;
-    const dpr = window.devicePixelRatio || 1;
-    const cv = document.createElement("canvas");
-    cv.id = "cv";
-    cv.width = Math.floor(v1.width * S.scale * dpr); cv.height = Math.floor(v1.height * S.scale * dpr);
-    cv.style.width = v1.width * S.scale + "px"; cv.style.height = v1.height * S.scale + "px";
-    try {
-      await page.render({ canvasContext: cv.getContext("2d"), viewport: page.getViewport({ scale: S.scale * dpr }) }).promise;
-    } catch (e) { return; }
-    if (id !== renderId) return;
-   $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
-await buildTextLayer(page, cv);
+  /* ---------- Sürekli kaydırmalı sayfa alanı ---------- */
+  async function renderAllPages() {
+    const token = ++renderId;
+    const container = $("pagesContainer");
+    container.innerHTML = "";
+    pageBoxes = [];
+    const doc = S.doc;
+    // Önce bütün sayfalar için yer tutucu oluştur; ardından sayfaları sırayla çiz.
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale: S.scale });
+      const box = document.createElement("div");
+      box.className = "pageBox"; box.dataset.page = n;
+      box.dataset.tool = S.tool;
+      box.style.width = vp.width + "px"; box.style.height = vp.height + "px";
+      const cv = document.createElement("canvas");
+      cv.width = 10; cv.height = 10; cv.style.width = vp.width + "px"; cv.style.height = vp.height + "px";
+      box.appendChild(cv); container.appendChild(box); pageBoxes.push(box);
+    }
+    for (let n = 1; n <= doc.numPages; n++) {
+      if (token !== renderId || doc !== S.doc) return;
+      const page = await doc.getPage(n), box = pageBoxes[n - 1];
+      const dpr = window.devicePixelRatio || 1;
+      const cv = box.querySelector("canvas");
+      cv.width = Math.floor(page.getViewport({ scale: S.scale }).width * dpr);
+      cv.height = Math.floor(page.getViewport({ scale: S.scale }).height * dpr);
+      try {
+        await page.render({ canvasContext: cv.getContext("2d"), viewport: page.getViewport({ scale: S.scale * dpr }) }).promise;
+        await buildTextLayer(page, cv, box, overlay);
+      } catch (e) { console.warn("Sayfa çizilemedi:", n, e); }
+    }
+    const target = pageBoxes[Math.max(0, Math.min(S.page - 1, pageBoxes.length - 1))];
+    if (target) activatePage(S.page, true);
+    applySearchHighlight(activeSearchQuery);
+  }
 
-overlay.innerHTML = "";
-
-const currentResult =
-  searchResults.length && searchIndex >= 0
-    ? searchResults[searchIndex]
-    : null;
-
-applySearchHighlight(activeSearchQuery, currentResult);
+  function activatePage(n, moveOverlay = true) {
+    if (!pageBoxes.length) return;
+    n = Math.max(1, Math.min(n, pageBoxes.length));
+    S.page = n;
+    const box = pageBoxes[n - 1];
+    if (moveOverlay && overlay.parentElement !== box) box.appendChild(overlay);
+    overlay.dataset.tool = S.tool;
+    box.dataset.tool = S.tool;
+    const pageW = box.querySelector("canvas").clientWidth / S.scale;
+    const pageH = box.querySelector("canvas").clientHeight / S.scale;
+    S.pw = pageW; S.ph = pageH;
+    overlay.innerHTML = "";
     (S.anns[n] || []).forEach(mount);
     $("pageInfo").textContent = n + " / " + S.doc.numPages;
     $("zoomInfo").textContent = Math.round(S.scale * 100) + "%";
@@ -563,15 +567,42 @@ applySearchHighlight(activeSearchQuery, currentResult);
     [...$("thumbs").children].forEach((b, i) => b.classList.toggle("on", i === n - 1));
   }
 
+  async function showPage(n) {
+    if (!S.doc) return;
+    if (!pageBoxes.length || pageBoxes.length !== S.doc.numPages) {
+      S.page = n; await renderAllPages();
+    }
+    activatePage(n);
+    const target = pageBoxes[n - 1];
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    applySearchHighlight(activeSearchQuery);
+  }
+
+  $("stage").addEventListener("scroll", () => {
+    if (!pageBoxes.length || scrollTick) return;
+    scrollTick = requestAnimationFrame(() => {
+      scrollTick = 0;
+      const stageRect = $("stage").getBoundingClientRect();
+      const mid = stageRect.top + Math.min(stageRect.height * 0.35, 220);
+      let best = 1, distance = Infinity;
+      pageBoxes.forEach((box, i) => {
+        const r = box.getBoundingClientRect();
+        const d = mid < r.top ? r.top - mid : mid > r.bottom ? mid - r.bottom : 0;
+        if (d < distance) { distance = d; best = i + 1; }
+      });
+      if (best !== S.page) activatePage(best);
+    });
+  });
+
   $("prevBtn").onclick = () => S.page > 1 && showPage(S.page - 1);
   $("nextBtn").onclick = () => S.page < S.doc.numPages && showPage(S.page + 1);
-  const zoom = (d) => { S.scale = Math.min(3, Math.max(0.4, S.scale + d)); showPage(S.page); };
+  const zoom = async (d) => { const n = S.page; S.scale = Math.min(3, Math.max(0.4, S.scale + d)); await renderAllPages(); await showPage(n); };
   $("zoomIn").onclick = () => zoom(0.15);
   $("zoomOut").onclick = () => zoom(-0.15);
 
   /* ---------- Araçlar ---------- */
   function setTool(t) {
-    S.tool = t; overlay.dataset.tool = t; $("pageBox").dataset.tool = t;
+    S.tool = t; overlay.dataset.tool = t; pageBoxes.forEach((b) => b.dataset.tool = t);
     document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tool === t));
   }
   document.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => {
@@ -882,44 +913,32 @@ applySearchHighlight(activeSearchQuery, currentResult);
     }
     btn.disabled = false; btn.textContent = "İndir";
   };
-
-// PDF içinde her eşleşmeyi ayrı ayrı bul
+// PDF içinde metin arama
 async function searchPdf(query) {
   if (!S.doc || !query.trim()) return [];
 
   const results = [];
   const needle = query.trim().toLocaleLowerCase("tr-TR");
 
-  for (let pageNo = 1; pageNo <= S.doc.numPages; pageNo++) {
-    const page = await S.doc.getPage(pageNo);
+  for (let i = 1; i <= S.doc.numPages; i++) {
+    const page = await S.doc.getPage(i);
     const textContent = await page.getTextContent();
 
-    // Her PDF metin öğesini ayrı ayrı tara
-    textContent.items.forEach((item, itemIndex) => {
-      if (!item.str) return;
+    const pageText = textContent.items
+      .map(item => item.str)
+      .join(" ");
 
-      const original = item.str;
-      const lower = original.toLocaleLowerCase("tr-TR");
-
-      let position = 0;
-      let found;
-
-      while ((found = lower.indexOf(needle, position)) !== -1) {
-        results.push({
-          page: pageNo,
-          itemIndex: itemIndex,
-          start: found,
-          end: found + needle.length
-        });
-
-        position = found + needle.length;
-      }
-    });
+    if (pageText.toLocaleLowerCase("tr-TR").includes(needle)) {
+      results.push({
+        page: i,
+        text: pageText
+      });
+    }
   }
 
   return results;
 }
-
+  
 
 // Arama durumu
 let searchResults = [];
@@ -927,107 +946,70 @@ let searchIndex = -1;
 let searchToken = 0;
 let activeSearchQuery = "";
 
-
-// Yalnızca aktif eşleşmeyi vurgula
-// Yalnızca aktif arama sonucunu doğru metin üzerinde vurgula
-function applySearchHighlight(query, result) {
-  const pageBox = $("pageBox");
-  const textLayer = pageBox.querySelector(".textLayer");
-
+// Sayfadaki eski arama vurgularını temizle ve yenilerini ekle
+function applySearchHighlight(query) {
+  const textLayer = pageBoxes[S.page - 1]?.querySelector(".textLayer");
   if (!textLayer) return;
 
-  let highlightLayer = pageBox.querySelector("#searchHighlights");
+  // Önce eski vurguları kaldır
+  textLayer.querySelectorAll("mark.search-hit").forEach(mark => {
+    mark.replaceWith(document.createTextNode(mark.textContent));
+  });
+  textLayer.normalize();
 
-  if (!highlightLayer) {
-    highlightLayer = document.createElement("div");
-    highlightLayer.id = "searchHighlights";
-    pageBox.appendChild(highlightLayer);
-  }
+  if (!query) return;
 
-  highlightLayer.innerHTML = "";
+  const needle = query.toLocaleLowerCase("tr-TR");
+  if (!needle) return;
 
-  if (!query || !result || result.page !== S.page) return;
-
-  const items = textLayer._textItems || [];
-  const spans = textLayer.querySelectorAll("span");
-
-  // PDF metin öğesinin karşılık geldiği span'i bul
-  let spanIndex = 0;
-  let targetSpan = null;
-
-  for (let i = 0; i < items.length; i++) {
-    if (!items[i].str) continue;
-
-    if (i === result.itemIndex) {
-      targetSpan = spans[spanIndex];
-      break;
-    }
-
-    spanIndex++;
-  }
-
-  if (!targetSpan) return;
-
+  // Metin katmanındaki kelimeleri tara
   const walker = document.createTreeWalker(
-    targetSpan,
+    textLayer,
     NodeFilter.SHOW_TEXT
   );
 
-  let textNode = null;
-  let offset = 0;
-  let current;
+  const nodes = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeValue.trim()) {
+      nodes.push(walker.currentNode);
+    }
+  }
 
-  while ((current = walker.nextNode())) {
-    const length = current.textContent.length;
+  nodes.forEach(node => {
+    const original = node.nodeValue;
+    const lower = original.toLocaleLowerCase("tr-TR");
 
-    if (
-      result.start >= offset &&
-      result.end <= offset + length
-    ) {
-      textNode = current;
-      break;
+    let position = 0;
+    let found = -1;
+    const fragment = document.createDocumentFragment();
+
+    while ((found = lower.indexOf(needle, position)) !== -1) {
+      // Eşleşmeden önceki metin
+      if (found > position) {
+        fragment.appendChild(
+          document.createTextNode(original.slice(position, found))
+        );
+      }
+
+      // Bulunan kelime
+      const mark = document.createElement("mark");
+      mark.className = "search-hit";
+      mark.textContent = original.slice(found, found + needle.length);
+      fragment.appendChild(mark);
+
+      position = found + needle.length;
     }
 
-    offset += length;
-  }
-
-  if (!textNode) return;
-
-  const range = document.createRange();
-
-  range.setStart(textNode, result.start - offset);
-  range.setEnd(textNode, result.end - offset);
-
-  const rects = range.getClientRects();
-  const boxRect = pageBox.getBoundingClientRect();
-
-  for (const rect of rects) {
-    if (rect.width <= 0 || rect.height <= 0) continue;
-
-    const mark = document.createElement("div");
-    mark.className = "search-hit";
-
-    mark.style.left = (rect.left - boxRect.left) + "px";
-    mark.style.top = (rect.top - boxRect.top) + "px";
-    mark.style.width = rect.width + "px";
-    mark.style.height = rect.height + "px";
-
-    highlightLayer.appendChild(mark);
-  }
+    if (position > 0) {
+      if (position < original.length) {
+        fragment.appendChild(
+          document.createTextNode(original.slice(position))
+        );
+      }
+      node.replaceWith(fragment);
+    }
+  });
 }
-
-
-// Arama sayacını güncelle
-function updateSearchCount() {
-  $("searchCount").textContent =
-    searchResults.length
-      ? `${searchIndex + 1} / ${searchResults.length}`
-      : "0 / 0";
-
-  $("searchPrev").disabled = searchResults.length === 0;
-  $("searchNext").disabled = searchResults.length === 0;
-}
-
 
 // Arama kutusu
 $("searchInput").addEventListener("input", async () => {
@@ -1038,64 +1020,69 @@ $("searchInput").addEventListener("input", async () => {
   searchResults = [];
   searchIndex = -1;
 
-  updateSearchCount();
+  $("searchCount").textContent = "0 / 0";
+  $("searchPrev").disabled = true;
+  $("searchNext").disabled = true;
 
   if (!query || !S.doc) {
-    applySearchHighlight("", null);
+    applySearchHighlight("");
     return;
   }
 
   try {
     const results = await searchPdf(query);
 
-    // Daha yeni bir arama başladıysa eski sonucu kullanma
+    // Eski aramanın yeni sonucu ezmesini engelle
     if (token !== searchToken) return;
 
     searchResults = results;
 
-    if (!searchResults.length) {
-      updateSearchCount();
-      applySearchHighlight("", null);
+    if (searchResults.length === 0) {
+      $("searchCount").textContent = "0 / 0";
+      applySearchHighlight("");
       return;
     }
 
     searchIndex = 0;
-    updateSearchCount();
 
-    await showPage(searchResults[0].page);
+    $("searchCount").textContent =
+      (searchIndex + 1) + " / " + searchResults.length;
+
+    $("searchPrev").disabled = false;
+    $("searchNext").disabled = false;
+
+    await showPage(searchResults[searchIndex].page);
 
   } catch (err) {
     toast("Arama sırasında hata oluştu: " + err.message, true);
   }
 });
 
-
-// Önceki eşleşme
+// Önceki arama sonucu
 $("searchPrev").onclick = async () => {
   if (!searchResults.length) return;
 
   searchIndex =
-    (searchIndex - 1 + searchResults.length) %
-    searchResults.length;
+    (searchIndex - 1 + searchResults.length) % searchResults.length;
 
-  updateSearchCount();
+  $("searchCount").textContent =
+    (searchIndex + 1) + " / " + searchResults.length;
 
   await showPage(searchResults[searchIndex].page);
 };
 
-
-// Sonraki eşleşme
+// Sonraki arama sonucu
 $("searchNext").onclick = async () => {
   if (!searchResults.length) return;
 
   searchIndex =
     (searchIndex + 1) % searchResults.length;
 
-  updateSearchCount();
+  $("searchCount").textContent =
+    (searchIndex + 1) + " / " + searchResults.length;
 
   await showPage(searchResults[searchIndex].page);
 };
-
 
 </script>
 </body>
