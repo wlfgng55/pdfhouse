@@ -121,6 +121,15 @@
   #pageBox { position: relative; margin: 0 auto; width: max-content; background: #fff; box-shadow: 0 6px 30px rgba(10,15,40,.28); }
   #pageBox canvas { display: block; }
   #overlay { position: absolute; inset: 0; }
+  /* Normal seçim modunda fare metin katmanına ulaşabilsin */
+#overlay[data-tool="select"] {
+  pointer-events: none;
+}
+
+/* Eklenen yazı, resim ve diğer öğeler seçilebilir kalmaya devam etsin */
+#overlay[data-tool="select"] .ann {
+  pointer-events: auto;
+}
   #overlay[data-tool="text"] { cursor: text; }
   #overlay[data-tool="highlight"], #overlay[data-tool="pen"] { cursor: crosshair; touch-action: none; }
   #overlay[data-tool="highlight"] .ann, #overlay[data-tool="pen"] .ann { pointer-events: none; }
@@ -130,7 +139,17 @@
   .ann.texthl .hl-r { position: absolute; background: rgba(255,222,60,.45); pointer-events: auto; cursor: pointer; }
   .ann.texthl .del { pointer-events: auto; }
   /* Metin katmanı: görünmez ama seçilebilir metin (vurgunun cümleyi takip etmesi için) */
-  .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; pointer-events: none; user-select: text; -webkit-user-select: text; text-size-adjust: none; transform-origin: 0 0; }
+ .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+}
   .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
   .textLayer ::selection { background: rgba(255,222,60,.6); }
   /* Arama sonucu vurgusu */
@@ -506,7 +525,7 @@
     } catch (e) { return; }
     if (id !== renderId) return;
     $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
-    buildTextLayer(page, cv);
+   await buildTextLayer(page, cv);
     applySearchHighlight(activeSearchQuery);
     overlay.innerHTML = "";
     (S.anns[n] || []).forEach(mount);
