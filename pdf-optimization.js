@@ -1,7 +1,8 @@
 
 import {
   configure,
-  optimize
+  optimize,
+  run
 } from "https://cdn.jsdelivr.net/npm/@arshad-shah/qpdf-wasm@0.1.0/dist/index.js";
 
 const QPDF_CDN =
@@ -102,7 +103,49 @@ export async function getImageEngine() {
 // --------------------------------------------------
 // STAGE 1 / 3: LOSSLESS STRUCTURAL OPTIMIZATION
 // --------------------------------------------------
+// --------------------------------------------------
+// ADVANCED FLATE OPTIMIZATION
+// --------------------------------------------------
 
+export async function optimizeFlateMaximum(bytes) {
+  const result = await run(
+    [
+      "--compress-streams=y",
+      "--decode-level=generalized",
+      "--recompress-flate",
+      "--compression-level=9",
+      "--object-streams=generate",
+      "input.pdf",
+      "output.pdf"
+    ],
+    {
+      "input.pdf": bytes
+    }
+  );
+
+  // qpdf: 0 = success, 3 = success with warnings
+  if (result.exitCode !== 0 && result.exitCode !== 3) {
+    throw new Error(
+      result.stderr || "İleri düzey PDF sıkıştırması başarısız."
+    );
+  }
+
+  const output = result.files["output.pdf"];
+
+  if (!(output instanceof Uint8Array) || !isPdf(output)) {
+    throw new Error(
+      "İleri düzey optimizasyon geçerli PDF üretmedi."
+    );
+  }
+
+  return {
+    bytes: output,
+    optimized: output.length < bytes.length,
+    originalSize: bytes.length,
+    optimizedSize: output.length,
+    warnings: result.stderr || ""
+  };
+}
 export async function optimizeStructure(bytes, level = "balanced") {
   const options = {
     objectStreams: "generate",
