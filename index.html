@@ -130,7 +130,7 @@
   .ann.texthl .hl-r { position: absolute; background: rgba(255,222,60,.45); pointer-events: auto; cursor: pointer; }
   .ann.texthl .del { pointer-events: auto; }
   /* Metin katmanı: görünmez ama seçilebilir metin (vurgunun cümleyi takip etmesi için) */
-  .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; pointer-events: none; user-select: none; -webkit-user-select: none; text-size-adjust: none; transform-origin: 0 0; }
+  .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; pointer-events: none; user-select: text; -webkit-user-select: text; text-size-adjust: none; transform-origin: 0 0; }
   .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
   .textLayer ::selection { background: rgba(255,222,60,.6); }
   /* Arama sonucu vurgusu */
