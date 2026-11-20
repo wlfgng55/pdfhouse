@@ -342,9 +342,9 @@ async function compress(){
      if(result.alreadyUnderTarget){
        $("resultNote").textContent=
          `Dosyan zaten istediğin ${fmt(targetBytes)} sınırının altında. Orijinal PDF korundu.`;
-     }else if(result.changedImages===0){
-       $("resultNote").textContent=
-         "PDF içerisinde güvenli biçimde yeniden sıkıştırılabilecek desteklenen RGB JPEG görsel bulunamadı. Orijinal dosyan korundu.";
+     }else if(!result.imageOptimized){
+  $("resultNote").textContent=
+    `Yapısal optimizasyon uygulandı. Desteklenen görseller yeniden sıkıştırılamadı veya görsel optimizasyonuna gerek kalmadı. Elde edilen sonuç: ${fmt(finalSize)}.`;
      }else if(targetReached){
        $("resultNote").textContent=
          `${result.changedImages} görsel yeniden sıkıştırıldı. İstenen ${fmt(targetBytes)} hedef boyutuna ulaşıldı. Metin ve vektör içerikleri resme dönüştürülmedi.`;
