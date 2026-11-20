@@ -110,7 +110,7 @@ footer{text-align:center;color:#9296a8;font-size:11px;padding:0 20px 35px}
       <label class="level"><input type="radio" name="level" value="strong"><strong>Güçlü</strong><span>Flate akışlarını daha yüksek sıkıştırma seviyesiyle yeniden işler.</span><em>En kapsamlı yapısal işlem</em></label>
       <label class="level">
   
-        <label class="level">
+       
        <input type="radio" name="level" value="target">
         <strong>Hedef boyut</strong>
          <span>PDF'ni istediğin dosya boyutuna indirmeyi dene.</span>
@@ -382,33 +382,6 @@ async function compress(){
  }
 }
 
-  setProgress(90,"Sonuç kontrol ediliyor…");
-  const optimized=new Blob([result.bytes],{type:"application/pdf"});
-  const originalSize=selectedFile.size;
-  const didShrink=optimized.size<originalSize;
-  // Never offer a larger re-serialized PDF: preserve and return the original instead.
-  outputBlob=didShrink?optimized:selectedFile;
-  outputName=selectedFile.name.replace(/\.pdf$/i,"")+(didShrink?"_optimize.pdf":"_orijinal.pdf");
-  $("beforeSize").textContent=fmt(originalSize);
-  $("afterSize").textContent=fmt(outputBlob.size);
-  const pct=Math.abs((1-outputBlob.size/originalSize)*100);
-  $("saving").textContent=didShrink?`%${pct.toFixed(1)} küçüldü`:"Boyut değişmedi";
-  $("saving").className=didShrink?"saving":"neutral";
-  $("resultTitle").textContent=didShrink?"✓ PDF başarıyla optimize edildi":"✓ Orijinal PDF korundu";
-  $("resultNote").textContent=didShrink
-    ? "PDF'nin yapısı optimize edildi. Sayfalar resme dönüştürülmedi; metin ve vektör içerikleri korunur."
-    : "Optimizasyon dosyayı küçültmedi. Daha büyük bir dosya vermemek için indirme bağlantısı orijinal PDF'yi sunar.";
-  $("downloadBtn").textContent=didShrink?"Optimize edilmiş PDF'yi indir ↓":"Orijinal PDF'yi indir ↓";
-  $("result").style.display="block";
-  setProgress(100,"Tamamlandı");
- }catch(err){
-  console.error(err);
-  showError(err.message||"PDF optimize edilemedi. Dosya şifreli, bozuk veya desteklenmeyen bir yapıda olabilir.");
- }finally{
-  stopWorker();
-  $("compressBtn").disabled=!selectedFile;
- }
-}
 $("compressBtn").addEventListener("click",compress);
 $("downloadBtn").addEventListener("click",()=>{
  if(!outputBlob)return;
