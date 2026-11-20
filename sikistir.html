@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Sıkıştır – PDF Stüdyo</title>
+<meta name="description" content="PDF dosyanın boyutunu tarayıcında optimize et. Dosyaların sunucuya yüklenmez.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5fb;--panel:#fff;--ink:#171a2b;--muted:#70758b;--line:#e4e6ef;--accent:#5b3df5;--soft:#f0edff;--green:#16865b;--shadow:0 16px 50px rgba(32,25,90,.07)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif;min-height:100vh}
+header{height:76px;background:rgba(255,255,255,.88);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(24px,calc((100% - 1120px)/2));position:sticky;top:0;z-index:5;backdrop-filter:blur(14px)}
+.logo{font-size:21px;font-weight:800;letter-spacing:-.8px;color:var(--ink);text-decoration:none}.logo b{color:var(--accent)}
+.home{color:var(--muted);font-size:13px;text-decoration:none;font-weight:700}.home:hover{color:var(--accent)}
+main{width:min(900px,calc(100% - 36px));margin:56px auto 80px}
+.eyebrow{display:inline-flex;gap:8px;align-items:center;background:var(--soft);color:var(--accent);padding:8px 12px;border-radius:30px;font-size:12px;font-weight:800;letter-spacing:.2px}
+h1{font-size:clamp(34px,6vw,52px);line-height:1.08;letter-spacing:-2px;margin:18px 0 12px;font-weight:800}
+.lead{color:var(--muted);font-size:15px;line-height:1.8;margin:0 auto 32px;max-width:650px}
+.intro{text-align:center;margin-bottom:34px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:var(--shadow)}
+.drop{border:2px dashed #c9c4ef;border-radius:18px;padding:42px 20px;text-align:center;background:#fbfaff;transition:.2s;cursor:pointer}
+.drop.over,.drop:hover{border-color:var(--accent);background:#f7f5ff}
+.upload-icon{width:54px;height:54px;margin:0 auto 14px;border-radius:17px;background:var(--soft);display:grid;place-items:center;color:var(--accent);font-size:25px;font-weight:800}
+.drop h2{font-size:17px;margin:0 0 7px}.drop p{font-size:13px;color:var(--muted);margin:0 0 18px}
+button{font:inherit;cursor:pointer;border:0}.primary{background:var(--accent);color:white;border-radius:11px;padding:13px 22px;font-size:13px;font-weight:800;box-shadow:0 7px 18px #5b3df52c}.primary:disabled{opacity:.45;cursor:not-allowed}
+input[type=file]{display:none}
+.filebox{display:flex;align-items:center;gap:13px;padding:15px;background:#fafaff;border:1px solid var(--line);border-radius:14px;margin-top:18px}
+.pdficon{width:42px;height:42px;border-radius:12px;background:#fff0f0;color:#d64a4a;display:grid;place-items:center;font-size:12px;font-weight:800}
+.fileinfo{min-width:0;flex:1}.filename{font-size:13px;font-weight:800;overflow-wrap:anywhere}.filesize{font-size:11px;color:var(--muted);margin-top:4px}
+.remove{background:transparent;color:var(--muted);font-size:20px;padding:5px 9px}
+.section-title{font-size:15px;font-weight:800;margin:28px 0 13px}
+.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.level{position:relative;border:1.5px solid var(--line);border-radius:15px;padding:17px 15px;cursor:pointer;transition:.18s;background:#fff}
+.level:has(input:checked){border-color:var(--accent);background:#faf9ff;box-shadow:0 0 0 3px #5b3df514}
+.level input{position:absolute;opacity:0}.level strong{display:block;font-size:13px;margin-bottom:6px}.level span{display:block;color:var(--muted);font-size:11px;line-height:1.6}.level em{display:block;color:var(--accent);font-style:normal;font-size:10px;font-weight:800;margin-top:9px}
+.notice{display:flex;gap:10px;background:#f7f8fc;border-radius:12px;padding:13px 15px;margin-top:18px;color:var(--muted);font-size:11px;line-height:1.7}
+.actions{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px}.privacy{font-size:11px;color:var(--muted);line-height:1.6}
+.progress-wrap{margin-top:22px}.progress-head{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:9px}.track{height:8px;background:#eeeff5;border-radius:20px;overflow:hidden}.fill{height:100%;width:0;background:var(--accent);transition:width .2s}
+.result{margin-top:22px;padding:20px;border:1px solid #ccebdc;background:#f4fcf8;border-radius:16px;display:none}.result h3{margin:0 0 12px;font-size:16px}.stats{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}.stat small{display:block;color:var(--muted);font-size:10px;margin-bottom:4px}.stat strong{font-size:17px}.saving{color:var(--green)}.neutral{color:#6b5a20}
+.error{display:none;margin-top:16px;padding:12px 14px;border-radius:12px;background:#fff1f0;color:#b42318;font-size:12px;line-height:1.6}
+footer{text-align:center;color:#9296a8;font-size:11px;padding:0 20px 35px}
+@media(max-width:650px){header{height:66px;padding:0 18px}main{margin-top:38px}.panel{padding:17px}.levels{grid-template-columns:1fr}.level{padding:14px}.actions{align-items:flex-start;flex-direction:column}.actions .primary{width:100%}.lead{font-size:14px}}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="index.html">PDF<b>Stüdyo</b></a>
+  <a class="home" href="index.html">← Ana sayfaya dön</a>
+</header>
+<main>
+  <section class="intro">
+    <div class="eyebrow">✦ PDF ARAÇLARI</div>
+    <h1>PDF dosyanı küçült.</h1>
+    <p class="lead">PDF'nin iç yapısını optimize et, metinleri ve vektörleri koru. Dosyanı seç, optimizasyon seviyesini belirle ve sonucu indir.</p>
+  </section>
+  <section class="panel">
+    <label class="drop" id="drop" for="fileInput">
+      <div class="upload-icon">↑</div>
+      <h2>PDF dosyanı buraya bırak</h2>
+      <p>veya bilgisayarından bir dosya seç</p>
+      <button class="primary" type="button" id="chooseBtn">PDF seç</button>
+      <input id="fileInput" type="file" accept="application/pdf,.pdf">
+    </label>
+    <div class="filebox" id="fileBox" hidden>
+      <div class="pdficon">PDF</div>
+      <div class="fileinfo"><div class="filename" id="fileName"></div><div class="filesize" id="fileSize"></div></div>
+      <button class="remove" id="removeBtn" type="button" aria-label="Dosyayı kaldır">×</button>
+    </div>
+
+    <div class="section-title">Optimizasyon seviyesini seç</div>
+    <div class="levels">
+      <label class="level"><input type="radio" name="level" value="light"><strong>Hafif</strong><span>PDF yapısını yeniden düzenler, akışları yeniden sıkıştırmaz.</span><em>En temkinli işlem</em></label>
+      <label class="level"><input type="radio" name="level" value="balanced" checked><strong>Önerilen</strong><span>Akışları ve PDF nesnelerini daha verimli biçimde düzenler.</span><em>Dengeli optimizasyon</em></label>
+      <label class="level"><input type="radio" name="level" value="strong"><strong>Güçlü</strong><span>Flate akışlarını daha yüksek sıkıştırma seviyesiyle yeniden işler.</span><em>En kapsamlı yapısal işlem</em></label>
+    </div>
+    <div class="notice"><span>ⓘ</span><span>Bu araç sayfaları resme dönüştürmez. Metin, vektör ve sayfa içeriği korunarak PDF'nin iç yapısı optimize edilir. Görseller yeniden boyutlandırılmaz; bu nedenle her dosyada küçülme garantisi yoktur. Sonuç orijinalden büyükse orijinal dosyan korunur.</span></div>
+    <div class="actions">
+      <div class="privacy">🔒 Dosyan sunucuya gönderilmez.<br>İşlem tarayıcında, WebAssembly ile yapılır.</div>
+      <button class="primary" id="compressBtn" type="button" disabled>PDF'yi optimize et</button>
+    </div>
+    <div class="progress-wrap" id="progressWrap" hidden>
+      <div class="progress-head"><span id="progressText">PDF hazırlanıyor…</span><span id="progressPct">0%</span></div>
+      <div class="track"><div class="fill" id="progressFill"></div></div>
+    </div>
+    <div class="error" id="error"></div>
+    <div class="result" id="result">
+      <h3 id="resultTitle">✓ Optimizasyon tamamlandı</h3>
+      <div class="stats">
+        <div class="stat"><small>Önceki boyut</small><strong id="beforeSize"></strong></div>
+        <div class="stat"><small>Yeni boyut</small><strong id="afterSize"></strong></div>
+        <div class="stat"><small>Değişim</small><strong id="saving"></strong></div>
+      </div>
+      <p id="resultNote" style="font-size:11px;line-height:1.7;color:#5d6574;margin:0 0 15px"></p>
+      <button class="primary" id="downloadBtn" type="button">PDF'yi indir ↓</button>
+    </div>
+  </section>
+</main>
+<footer>PDF Stüdyo · Ücretsiz PDF araçları · Dosyaların cihazında kalır</footer>
+<script>
+const $=id=>document.getElementById(id);
+let selectedFile=null, outputBlob=null, outputName="pdf_optimize.pdf", worker=null;
+const fmt=n=>n<1024*1024?(n/1024).toFixed(1)+" KB":(n/1024/1024).toFixed(2)+" MB";
+function setProgress(p,t){$("progressWrap").hidden=false;$("progressFill").style.width=p+"%";$("progressPct").textContent=p+"%";$("progressText").textContent=t}
+function resetResult(){$("result").style.display="none";$("error").style.display="none";$("progressWrap").hidden=true;outputBlob=null}
+function setFile(file){
+  resetResult();
+  if(!file)return;
+  if(file.type!=="application/pdf"&&!/\.pdf$/i.test(file.name)){showError("Lütfen geçerli bir PDF dosyası seç.");return}
+  selectedFile=file;$("fileName").textContent=file.name;$("fileSize").textContent=fmt(file.size);$("fileBox").hidden=false;$("drop").style.display="none";$("compressBtn").disabled=false;
+}
+function clearFile(){selectedFile=null;$("fileInput").value="";$("fileBox").hidden=true;$("drop").style.display="block";$("compressBtn").disabled=true;resetResult()}
+function showError(msg){$("error").textContent=msg;$("error").style.display="block"}
+$("fileInput").addEventListener("change",e=>setFile(e.target.files[0]));
+$("chooseBtn").addEventListener("click",e=>{e.preventDefault();$("fileInput").click()});
+$("removeBtn").addEventListener("click",clearFile);
+const drop=$("drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
+drop.addEventListener("drop",e=>setFile(e.dataTransfer.files[0]));
+
+function stopWorker(){if(worker){worker.terminate();worker=null}}
+async function compress(){
+ if(!selectedFile)return;
+ $("compressBtn").disabled=true;$("error").style.display="none";$("result").style.display="none";
+ try{
+  setProgress(4,"PDF okunuyor…");
+  const bytes=await selectedFile.arrayBuffer();
+  const header=new TextDecoder("latin1").decode(new Uint8Array(bytes,0,Math.min(1024,bytes.byteLength)));
+  if(!header.includes("%PDF-"))throw new Error("Dosyanın PDF başlığı okunamadı. Dosya bozuk olabilir.");
+  setProgress(12,"Optimizasyon motoru hazırlanıyor…");
+  stopWorker();
+  worker=new Worker("./pdf-compress-worker.js",{type:"module"});
+  const level=document.querySelector('input[name="level"]:checked').value;
+  const result=await new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error("İşlem zaman aşımına uğradı. Daha küçük bir PDF ile tekrar dene.")),180000);
+    worker.onmessage=e=>{clearTimeout(timeout);e.data.error?reject(new Error(e.data.error)):resolve(e.data)};
+    worker.onerror=e=>{clearTimeout(timeout);reject(new Error("Optimizasyon motoru yüklenemedi. Sayfayı GitHub Pages üzerinden açtığından ve internet bağlantın olduğundan emin ol."))};
+    worker.postMessage({bytes,level},[bytes]);
+  });
+  setProgress(90,"Sonuç kontrol ediliyor…");
+  const optimized=new Blob([result.bytes],{type:"application/pdf"});
+  const originalSize=selectedFile.size;
+  const didShrink=optimized.size<originalSize;
+  // Never offer a larger re-serialized PDF: preserve and return the original instead.
+  outputBlob=didShrink?optimized:selectedFile;
+  outputName=selectedFile.name.replace(/\.pdf$/i,"")+(didShrink?"_optimize.pdf":"_orijinal.pdf");
+  $("beforeSize").textContent=fmt(originalSize);
+  $("afterSize").textContent=fmt(outputBlob.size);
+  const pct=Math.abs((1-outputBlob.size/originalSize)*100);
+  $("saving").textContent=didShrink?`%${pct.toFixed(1)} küçüldü`:"Boyut değişmedi";
+  $("saving").className=didShrink?"saving":"neutral";
+  $("resultTitle").textContent=didShrink?"✓ PDF başarıyla optimize edildi":"✓ Orijinal PDF korundu";
+  $("resultNote").textContent=didShrink
+    ? "PDF'nin yapısı optimize edildi. Sayfalar resme dönüştürülmedi; metin ve vektör içerikleri korunur."
+    : "Optimizasyon dosyayı küçültmedi. Daha büyük bir dosya vermemek için indirme bağlantısı orijinal PDF'yi sunar.";
+  $("downloadBtn").textContent=didShrink?"Optimize edilmiş PDF'yi indir ↓":"Orijinal PDF'yi indir ↓";
+  $("result").style.display="block";
+  setProgress(100,"Tamamlandı");
+ }catch(err){
+  console.error(err);
+  showError(err.message||"PDF optimize edilemedi. Dosya şifreli, bozuk veya desteklenmeyen bir yapıda olabilir.");
+ }finally{
+  stopWorker();
+  $("compressBtn").disabled=!selectedFile;
+ }
+}
+$("compressBtn").addEventListener("click",compress);
+$("downloadBtn").addEventListener("click",()=>{
+ if(!outputBlob)return;
+ const url=URL.createObjectURL(outputBlob),a=document.createElement("a");
+ a.href=url;a.download=outputName;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),5000);
+});
+</script>
+</body>
+</html>
