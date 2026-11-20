@@ -916,6 +916,8 @@
 // PDF içinde metin arama
 
 // PDF içinde geçen HER kelimeyi ayrı sonuç olarak bul
+
+// PDF içinde geçen HER kelimeyi bul ve ekrandaki konumuna göre sırala
 async function searchPdf(query) {
   if (!S.doc || !query.trim()) return [];
 
@@ -925,6 +927,7 @@ async function searchPdf(query) {
   for (let i = 1; i <= S.doc.numPages; i++) {
     const page = await S.doc.getPage(i);
     const textContent = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1 });
 
     let occurrenceOnPage = 0;
 
@@ -935,12 +938,24 @@ async function searchPdf(query) {
       let position = 0;
       let found;
 
+      // Metin öğesinin ekrandaki başlangıç koordinatları
+      const point = viewport.convertToViewportPoint(
+        item.transform[4],
+        item.transform[5]
+      );
+
       while ((found = text.indexOf(needle, position)) !== -1) {
         occurrenceOnPage++;
 
+        // Eşleşmenin yaklaşık yatay konumu
+        const charWidth = item.width / Math.max(1, item.str.length);
+        const x = point[0] + found * charWidth;
+
         results.push({
           page: i,
-          occurrenceOnPage: occurrenceOnPage
+          occurrenceOnPage: occurrenceOnPage,
+          x: x,
+          y: point[1]
         });
 
         position = found + needle.length;
@@ -948,8 +963,22 @@ async function searchPdf(query) {
     }
   }
 
+  // Önce sayfa, sonra yukarıdan aşağıya, aynı satırda soldan sağa
+  results.sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+
+    const verticalDifference = a.y - b.y;
+
+    if (Math.abs(verticalDifference) > 2) {
+      return verticalDifference;
+    }
+
+    return a.x - b.x;
+  });
+
   return results;
 }
+
 
   
 
