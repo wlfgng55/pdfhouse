@@ -1,6 +1,7 @@
 
 import {
   optimizeStructure,
+  optimizeFlateMaximum,
   getImageEngine,
   analyzeImages,
   compressImages,
@@ -30,88 +31,80 @@ self.onmessage = async ({ data }) => {
     }
 
     const settings = {
-      light: {
-        quality: 0.90,
-        scale: 1
-      },
-      balanced: {
-        quality: 0.78,
-        scale: 1
-      },
-      strong: {
-        quality: 0.62,
-        scale: 0.90
-      }
+      light: { quality: 0.90, scale: 1 },
+      balanced: { quality: 0.78, scale: 1 },
+      strong: { quality: 0.62, scale: 0.90 }
     };
 
-    const selected =
-      settings[level] || settings.balanced;
-
+    const selected = settings[level] || settings.balanced;
     const warnings = [];
 
-    // Original PDF is always a fallback.
     let bestBytes = originalBytes;
     let changedImages = 0;
     let structuralOptimized = false;
 
-    // ----------------------------------------------
-    // STAGE 1: STRUCTURAL OPTIMIZATION
-    // ----------------------------------------------
+    function consider(candidate) {
+      if (
+        candidate instanceof Uint8Array &&
+        candidate.length > 0 &&
+        candidate.length < bestBytes.length
+      ) {
+        bestBytes = candidate;
+        return true;
+      }
+      return false;
+    }
+
+    // STAGE 1: NORMAL STRUCTURAL OPTIMIZATION
 
     progress(8, "PDF yapısı optimize ediliyor…");
 
+    let workingBytes = originalBytes;
+
     try {
-      const stage1 = await optimizeStructure(
-        originalBytes,
-        level
-      );
+      const result = await optimizeStructure(originalBytes, level);
 
-      warnings.push(...stage1.warnings);
+      workingBytes = result.bytes;
+      consider(result.bytes);
 
-      if (stage1.bytes.length < bestBytes.length) {
-        bestBytes = stage1.bytes;
-        structuralOptimized = true;
-      }
-
+      warnings.push(...(result.warnings || []));
     } catch (error) {
-      warnings.push(
-        "İlk yapısal optimizasyon başarısız: " +
-        (error?.message || String(error))
-      );
+      warnings.push("Yapısal optimizasyon: " + (error?.message || String(error)));
     }
 
-    // Use the structurally optimized result as the
-    // input to image processing, even if it is not
-    // smaller than the original.
-    let workingBytes = bestBytes;
+    // STAGE 1B: MAXIMUM DEFLATE OPTIMIZATION
 
-    // ----------------------------------------------
+    progress(20, "İleri düzey stream sıkıştırması deneniyor…");
+
+    try {
+      const result = await optimizeFlateMaximum(workingBytes);
+
+      consider(result.bytes);
+
+      if (result.bytes.length < workingBytes.length) {
+        workingBytes = result.bytes;
+      }
+
+      if (result.warnings) warnings.push(result.warnings);
+    } catch (error) {
+      warnings.push("İleri düzey sıkıştırma: " + (error?.message || String(error)));
+    }
+
     // STAGE 2: IMAGE ANALYSIS
-    // ----------------------------------------------
 
-    progress(24, "PDF görselleri analiz ediliyor…");
+    progress(34, "PDF görselleri analiz ediliyor…");
 
     let analysis = null;
     let engine = null;
 
     try {
       engine = await getImageEngine();
-
-      analysis = await analyzeImages(
-        engine,
-        workingBytes
-      );
-
+      analysis = await analyzeImages(engine, workingBytes);
     } catch (error) {
-      warnings.push(
-        "Görsel analizi yapılamadı: " +
-        (error?.message || String(error))
-      );
+      warnings.push("Görsel analizi: " + (error?.message || String(error)));
     }
 
-    // ----------------------------------------------
     // STAGE 2B: IMAGE OPTIMIZATION
-    // ----------------------------------------------
 
     if (
       engine &&
@@ -120,82 +113,48 @@ self.onmessage = async ({ data }) => {
       typeof OffscreenCanvas !== "undefined" &&
       typeof createImageBitmap !== "undefined"
     ) {
-      progress(42, "JPEG görseller optimize ediliyor…");
+      progress(50, "JPEG görseller optimize ediliyor…");
 
       try {
-        const imageResult = await compressImages(
+        const result = await compressImages(
           engine,
           workingBytes,
           selected.quality,
           selected.scale
         );
 
-        if (
-          imageResult.bytes.length < workingBytes.length
-        ) {
-          workingBytes = imageResult.bytes;
-          changedImages = imageResult.changedImages;
-
-          if (workingBytes.length < bestBytes.length) {
-            bestBytes = workingBytes;
-          }
+        if (result.bytes.length < workingBytes.length) {
+          workingBytes = result.bytes;
+          changedImages = result.changedImages;
+          consider(result.bytes);
         }
-
       } catch (error) {
-        warnings.push(
-          "Görsel optimizasyonu başarısız: " +
-          (error?.message || String(error))
-        );
+        warnings.push("Görsel optimizasyonu: " + (error?.message || String(error)));
       }
-
-    } else if (
-      analysis &&
-      analysis.jpegCount > 0
-    ) {
-      warnings.push(
-        "Tarayıcı görsel yeniden kodlamayı desteklemiyor."
-      );
     }
 
-    // ----------------------------------------------
-    // STAGE 3: STRUCTURAL OPTIMIZATION AGAIN
-    // ----------------------------------------------
+    // STAGE 3: FINAL STRUCTURAL OPTIMIZATION
 
-    progress(
-      76,
-      "Son PDF yapısal olarak yeniden optimize ediliyor…"
-    );
+    progress(76, "Son PDF yapısı optimize ediliyor…");
 
     try {
-      const stage3 = await finalizeStructure(
-        workingBytes,
-        level
-      );
+      const result = await finalizeStructure(workingBytes, level);
 
-      warnings.push(...stage3.warnings);
-
-      if (stage3.bytes.length < bestBytes.length) {
-        bestBytes = stage3.bytes;
-      }
-
+      consider(result.bytes);
+      warnings.push(...(result.warnings || []));
     } catch (error) {
-      warnings.push(
-        "Son yapısal optimizasyon başarısız: " +
-        (error?.message || String(error))
-      );
+      warnings.push("Son yapısal optimizasyon: " + (error?.message || String(error)));
     }
 
-    // ----------------------------------------------
     // STAGE 4: FINAL RESULT
-    // ----------------------------------------------
 
     progress(96, "Sonuç kontrol ediliyor…");
 
+    structuralOptimized = bestBytes.length < originalBytes.length;
+
     sendResult(bestBytes, {
       changedImages,
-      structuralOptimized:
-        structuralOptimized ||
-        bestBytes.length < originalBytes.length,
+      structuralOptimized,
       imageOptimized: changedImages > 0,
       analysis,
       originalSize: originalBytes.length,
