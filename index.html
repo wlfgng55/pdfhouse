@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Stüdyo – PDF’ini aç, yaz, imzala</title>
+<meta name="description" content="PDF dosyalarına yazı, imza, resim ve vurgu ekle; sayfaları sil veya ekle. Dosyan bilgisayarından çıkmaz, her şey tarayıcında yapılır.">
+<meta property="og:title" content="PDF Stüdyo"><meta property="og:description" content="Tarayıcında PDF düzenle: yazı, imza, resim, vurgu, sayfa ekle/sil. Dosyan yüklenmez.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2722%27 fill=%27%235b3df5%27/%3E%3Ctext x=%2750%27 y=%2768%27 font-size=%2760%27 text-anchor=%27middle%27 fill=%27white%27 font-family=%27Arial%27 font-weight=%27700%27%3EP%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<!-- PDF.js: sayfayı ekranda gösterir. pdf-lib: değişiklikleri PDF’e işler. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Yedek: ayrı çalışan (worker) başlatılamazsa PDF.js bunu doğrudan sayfada kullanır -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root {
+    --bg: #e4e8f0; --panel: #ffffff; --ink: #141a2e; --muted: #667085; --line: #d5d9e3;
+    --accent: #5b3df5; --accent-ink: #ffffff; --danger: #d92d20;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1020; --panel: #171b30; --ink: #eef0fb; --muted: #98a0bd; --line: #2a3050;
+      --accent: #9b8cff; --accent-ink: #0d1020; --danger: #ff8f84;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button, select { font: inherit; color: inherit; }
+  button:focus-visible, select:focus-visible, .drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- Üst çubuk ---------- */
+  .bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .logo { font-weight: 800; letter-spacing: -.02em; margin-right: 4px; }
+  .logo b { color: var(--accent); }
+  .btn, .go {
+    border: 1.5px solid var(--line); background: transparent; border-radius: 9px;
+    padding: 7px 14px; cursor: pointer; font-weight: 600;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--ink); }
+  .go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
+  .go:disabled, .btn:disabled { opacity: .4; cursor: default; }
+  .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 6px 13px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  .swatches { display: flex; gap: 6px; }
+  .swatches button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1.5px var(--line); cursor: pointer; padding: 0; }
+  .swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--accent); }
+  select { background: var(--bg); border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  .sp { flex: 1; }
+  .grp { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+  .grp .btn { padding: 5px 11px; }
+
+  /* ---------- Çalışma alanı ---------- */
+  .main { flex: 1; display: flex; min-height: 0; position: relative; }
+  #side { width: 160px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+  #thumbs { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; }
+  .th { position: relative; border: 2px solid transparent; border-radius: 6px; padding: 3px; color: var(--muted); font-size: .8rem; }
+  .th .pick { display: grid; gap: 3px; justify-items: center; width: 100%; border: 0; background: none; padding: 0; cursor: pointer; color: inherit; }
+  .th canvas { width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .th.on { border-color: var(--accent); color: var(--ink); }
+  .trash { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #d92d20; color: #fff; cursor: pointer; opacity: 0; transition: opacity .12s; }
+  .th:hover .trash, .th:focus-within .trash { opacity: 1; }
+  @media (hover: none) { .trash { opacity: .92; } }
+  .side-act { display: grid; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .side-act .btn { width: 100%; font-size: .85rem; padding: 6px 8px; }
+  .toast-btn { margin-left: 10px; background: none; border: 1.5px solid currentColor; color: inherit; border-radius: 7px; padding: 3px 10px; cursor: pointer; font-weight: 700; }
+  #stage { flex: 1; overflow: auto; padding: 24px; }
+  #pageBox { position: relative; margin: 0 auto; width: max-content; background: #fff; box-shadow: 0 6px 30px rgba(10,15,40,.28); }
+  #pageBox canvas { display: block; }
+  #overlay { position: absolute; inset: 0; }
+  #overlay[data-tool="text"] { cursor: text; }
+  #overlay[data-tool="highlight"], #overlay[data-tool="pen"] { cursor: crosshair; touch-action: none; }
+  #overlay[data-tool="highlight"] .ann, #overlay[data-tool="pen"] .ann { pointer-events: none; }
+  #overlay[data-tool="highlight"] { pointer-events: none; }
+  #overlay[data-tool="highlight"] .hl-r, #overlay[data-tool="pen"] .hl-r, #overlay[data-tool="text"] .hl-r { pointer-events: none; }
+  .ann.texthl { pointer-events: none; }
+  .ann.texthl .hl-r { position: absolute; background: rgba(255,222,60,.45); pointer-events: auto; cursor: pointer; }
+  .ann.texthl .del { pointer-events: auto; }
+  /* Metin katmanı: görünmez ama seçilebilir metin (vurgunun cümleyi takip etmesi için) */
+  .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; pointer-events: none; user-select: none; -webkit-user-select: none; text-size-adjust: none; transform-origin: 0 0; }
+  .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+  .textLayer ::selection { background: rgba(255,222,60,.6); }
+  #pageBox[data-tool="highlight"] .textLayer { pointer-events: auto; user-select: text; -webkit-user-select: text; }
+
+  /* ---------- Eklenen öğeler ---------- */
+  .ann { position: absolute; }
+  .ann.selected { outline: 1.5px dashed var(--accent); }
+  .ann.text .tx { outline: none; min-width: 3ch; min-height: 1.25em; white-space: pre; line-height: 1.25; font-family: Helvetica, Arial, sans-serif; cursor: text; }
+  .ann.text .tx:empty::before { content: "Yaz…"; color: #8a90a6; }
+  .ann.highlight { background: rgba(255,222,60,.45); cursor: move; touch-action: none; }
+  .ann.sign, .ann.image, .ann.draw { cursor: move; touch-action: none; }
+  .ann.sign img, .ann.image img, .ann.draw img { width: 100%; height: 100%; display: block; pointer-events: none; user-select: none; }
+  .ctl { display: none; }
+  .ann.selected .ctl { display: block; }
+  .hd { position: absolute; left: -15px; top: -15px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: grab; touch-action: none; }
+  .del { position: absolute; right: -13px; top: -15px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--danger); color: #fff; cursor: pointer; font-size: 11px; line-height: 1; padding: 0; }
+  .rs { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; border-radius: 3px; background: var(--accent); cursor: nwse-resize; touch-action: none; }
+
+  /* ---------- Boş durum ---------- */
+  .lic { margin:18px 0 0; text-align:center; font-size:.85rem; } .lic a { color:var(--muted); }
+  #empty { position: absolute; inset: 0; z-index: 5; background: var(--bg); display: grid; place-items: center; padding: 20px; }
+  .empty-in { max-width: 560px; width: 100%; }
+  .empty-in h1 { font-size: clamp(2rem, 6vw, 3.3rem); line-height: 1.04; letter-spacing: -.035em; font-weight: 800; margin: 0 0 12px; }
+  .empty-in p { color: var(--muted); margin: 0 0 24px; font-size: 1.05rem; }
+  .drop {
+    display: block; border: 2px dashed var(--muted); border-radius: 16px; padding: 44px 20px;
+    text-align: center; cursor: pointer; background: var(--panel); transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop strong { display: block; font-size: 1.15rem; margin-bottom: 4px; }
+  .drop small { color: var(--muted); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+  /* ---------- İmza penceresi ---------- */
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--ink); padding: 20px; width: min(94vw, 640px); }
+  dialog::backdrop { background: rgba(8,10,25,.55); }
+  dialog h2 { margin: 0 0 4px; font-size: 1.2rem; }
+  dialog p { margin: 0 0 12px; color: var(--muted); }
+  #signCv { width: 100%; height: auto; background: #fff; border-radius: 10px; border: 1.5px solid var(--line); touch-action: none; cursor: crosshair; display: block; }
+  .dlg-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 10px; font-weight: 600; z-index: 20; max-width: 90vw; }
+  #toast.err { background: var(--danger); color: #fff; }
+
+  @media (max-width: 820px) { #side { display: none; } #stage { padding: 14px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="bar" id="bar">
+  <div class="logo">PDF<b>Stüdyo</b></div>
+  <button class="btn" id="openBtn">Aç</button>
+  <div class="seg" role="group" aria-label="Araçlar">
+    <button data-tool="select" aria-pressed="true">Seç</button>
+    <button data-tool="text" aria-pressed="false">Yazı</button>
+    <button data-tool="highlight" aria-pressed="false">Vurgula</button>
+    <button data-tool="pen" aria-pressed="false">Çiz</button>
+    <button data-tool="sign" aria-pressed="false">İmza</button>
+    <button data-tool="image" aria-pressed="false">Resim</button>
+  </div>
+  <div class="swatches" id="swatches" role="group" aria-label="Yazı rengi">
+    <button data-c="#111111" style="background:#111111" aria-label="Siyah" aria-pressed="true"></button>
+    <button data-c="#1d4ed8" style="background:#1d4ed8" aria-label="Mavi" aria-pressed="false"></button>
+    <button data-c="#d92d20" style="background:#d92d20" aria-label="Kırmızı" aria-pressed="false"></button>
+    <button data-c="#16803c" style="background:#16803c" aria-label="Yeşil" aria-pressed="false"></button>
+  </div>
+  <select id="sizeSel" aria-label="Yazı boyutu">
+    <option>12</option><option>14</option><option selected>16</option><option>20</option><option>24</option><option>32</option>
+  </select>
+  <select id="penSel" aria-label="Kalem kalınlığı">
+    <option value="1.5">İnce kalem</option><option value="3" selected>Orta kalem</option><option value="6">Kalın kalem</option>
+  </select>
+  <button class="btn" id="undoBtn">Geri al</button>
+  <span class="sp"></span>
+  <div class="grp" aria-label="Sayfa">
+    <button class="btn" id="prevBtn" aria-label="Önceki sayfa" disabled>‹</button>
+    <span id="pageInfo">–</span>
+    <button class="btn" id="nextBtn" aria-label="Sonraki sayfa" disabled>›</button>
+  </div>
+  <div class="grp" aria-label="Yakınlaştırma">
+    <button class="btn" id="zoomOut" aria-label="Uzaklaştır" disabled>−</button>
+    <span id="zoomInfo">–</span>
+    <button class="btn" id="zoomIn" aria-label="Yakınlaştır" disabled>+</button>
+  </div>
+  <button class="go" id="saveBtn" disabled>İndir</button>
+</header>
+
+<div class="main">
+  <aside id="side">
+    <div id="thumbs" aria-label="Sayfalar"></div>
+    <div class="side-act">
+      <button class="btn" id="addBlank" disabled>+ Boş sayfa</button>
+      <button class="btn" id="addPdf" disabled>+ PDF’ten sayfa</button>
+    </div>
+  </aside>
+  <section id="stage">
+    <div id="pageBox"><canvas id="cv" width="10" height="10"></canvas><div id="overlay" data-tool="select"></div></div>
+  </section>
+
+  <div id="empty">
+    <div class="empty-in">
+      <h1>PDF’ini aç, üstüne yaz, imzala.</h1>
+      <p>Dosyan bilgisayarından çıkmaz. Her şey bu sayfada, tarayıcında yapılır.</p>
+      <label class="drop" id="drop">
+        <input type="file" id="fileInput" accept="application/pdf,.pdf">
+        <strong>PDF dosyasını buraya bırak</strong>
+        <small>ya da tıklayıp bilgisayarından seç</small>
+      </label>
+      <p class="lic"><a href="lisanslar.html">Açık kaynak lisansları</a></p>
+    </div>
+  </div>
+</div>
+
+<dialog id="signDlg">
+  <h2>İmzanı çiz</h2>
+  <p>Fare, dokunmatik ekran veya kalemle çizebilirsin.</p>
+  <canvas id="signCv" width="600" height="220"></canvas>
+  <div class="dlg-actions">
+    <button class="btn" id="signClear">Temizle</button>
+    <button class="btn" id="signCancel">Vazgeç</button>
+    <button class="go" id="signOk">Sayfaya ekle</button>
+  </div>
+</dialog>
+
+<div id="toast" hidden></div>
+<input type="file" id="imgInput" accept="image/*" hidden>
+<input type="file" id="pdfInput" accept="application/pdf,.pdf" hidden>
+
+<script>
+  /* Kütüphaneler (internetten) yüklenemediyse sessiz kalma, nedenini ekranda göster */
+  if (typeof pdfjsLib === "undefined" || typeof PDFLib === "undefined") {
+    document.querySelector(".empty-in").innerHTML =
+      "<h1>Gerekli dosyalar yüklenemedi</h1>" +
+      "<p>Bu sayfa cdnjs.cloudflare.com adresinden iki PDF kütüphanesi yükler. İnternet bağlantını kontrol et; " +
+      "okul veya kurs ağı bu adresi engelliyor olabilir.</p>";
+    throw new Error("PDF.js veya pdf-lib yüklenemedi");
+  }
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const $ = (id) => document.getElementById(id);
+
+  /* PDF.js çalışanını (worker) dosyadan açıldığında da çalışsın diye Blob olarak yüklüyoruz */
+  const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  const workerReady = fetch(PDFJS + "pdf.worker.min.js").then((r) => r.text()).then((t) => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], { type: "text/javascript" }));
+  }).catch(() => { pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js"; });
+
+  /* Uygulamanın durumu. Ölçüler PDF birimiyle (pt) tutulur, ekranda ölçekle çarpılır. */
+  const S = { bytes: null, name: "", doc: null, page: 1, scale: 1.2, pw: 0, ph: 0,
+              tool: "select", color: "#111111", size: 16, pen: 3, anns: {}, sel: null };
+  let uid = 0, renderId = 0;
+  const overlay = $("overlay");
+
+  function toast(msg, err) {
+    const t = $("toast");
+    t.textContent = msg; t.className = err ? "err" : ""; t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3200);
+  }
+
+  function toastUndo(msg, fn) {
+    const t = $("toast"); t.className = ""; t.textContent = msg + " ";
+    const b = document.createElement("button"); b.className = "toast-btn"; b.textContent = "Geri al";
+    b.onclick = async () => { t.hidden = true; await fn(); };
+    t.appendChild(b); t.hidden = false;
+    clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 7000);
+  }
+
+  /* ---------- Dosya açma ---------- */
+  $("openBtn").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = (e) => { openFile(e.target.files[0]); e.target.value = ""; };
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => openFile(e.dataTransfer.files[0]));
+
+  async function openFile(file) {
+    if (!file) return;
+    if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) { toast("Lütfen bir PDF dosyası seç.", true); return; }
+    try {
+      await workerReady;
+      const bytes = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+      Object.assign(S, { bytes, doc, name: file.name.replace(/\.pdf$/i, ""), anns: {}, sel: null });
+      $("empty").hidden = true;
+      ["saveBtn", "zoomIn", "zoomOut", "addBlank", "addPdf"].forEach((id) => ($(id).disabled = false));
+      const p1 = await doc.getPage(1);
+      S.scale = Math.min(1.5, ($("stage").clientWidth - 52) / p1.getViewport({ scale: 1 }).width);
+      buildThumbs();
+      showPage(1);
+    } catch (err) {
+      toast("PDF açılamadı. Dosya bozuk ya da şifreli olabilir.", true);
+    }
+  }
+
+  const TRASH = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6M14 10v6"/></svg>';
+
+  async function buildThumbs() {
+    const box = $("thumbs"); box.innerHTML = "";
+    for (let i = 1; i <= S.doc.numPages; i++) {
+      const w = document.createElement("div");
+      w.className = "th";
+      w.innerHTML = '<button class="pick" aria-label="Sayfa ' + i + '"><canvas></canvas><span>' + i + '</span></button>' +
+                    '<button class="trash" aria-label="Sayfa ' + i + ' sil" title="Sayfayı sil">' + TRASH + '</button>';
+      w.querySelector(".pick").onclick = () => showPage(i);
+      w.querySelector(".trash").onclick = () => deletePage(i);
+      box.appendChild(w);
+    }
+    const doc = S.doc;
+    for (let i = 1; i <= doc.numPages && doc === S.doc; i++) {
+      const p = await doc.getPage(i);
+      const vp = p.getViewport({ scale: 120 / p.getViewport({ scale: 1 }).width });
+      const c = box.children[i - 1].querySelector("canvas");
+      c.width = vp.width; c.height = vp.height;
+      await p.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    }
+  }
+
+  /* ---------- Sayfa ekleme / silme ---------- */
+  /* Değişikliği pdf-lib ile PDF’e uygular, belgeyi yeniden yükler, eklenen öğelerin sayfa numaralarını kaydırır. */
+  async function reloadDoc(bytes, goPage) {
+    S.bytes = bytes;
+    S.doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+    buildThumbs();
+    await showPage(Math.min(Math.max(1, goPage), S.doc.numPages));
+  }
+
+  async function restructure(msg, edit, remap, goPage) {
+    const prev = { bytes: S.bytes, anns: S.anns, page: S.page };
+    try {
+      const doc = await PDFDocument.load(S.bytes);
+      await edit(doc);
+      const next = {};
+      for (const [k, v] of Object.entries(S.anns)) { const j = remap(+k); if (j) next[j] = [...v]; }
+      S.anns = next; S.sel = null;
+      await reloadDoc(await doc.save(), goPage(doc));
+      toastUndo(msg, async () => { S.anns = prev.anns; S.sel = null; await reloadDoc(prev.bytes, prev.page); });
+    } catch (err) {
+      toast("İşlem yapılamadı: " + (err.message || "bilinmeyen hata"), true);
+    }
+  }
+
+  function deletePage(n) {
+    if (S.doc.numPages <= 1) { toast("Son sayfa silinemez.", true); return; }
+    restructure("Sayfa " + n + " silindi.", (d) => d.removePage(n - 1),
+      (i) => (i < n ? i : i > n ? i - 1 : 0), (d) => Math.min(n, d.getPageCount()));
+  }
+
+  $("addBlank").onclick = () => {
+    const cur = S.page;
+    restructure("Boş sayfa eklendi.", (d) => { const { width, height } = d.getPage(cur - 1).getSize(); d.insertPage(cur, [width, height]); },
+      (i) => (i > cur ? i + 1 : i), () => cur + 1);
+  };
+
+  $("addPdf").onclick = () => $("pdfInput").click();
+  $("pdfInput").onchange = (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    const cur = S.page; let count = 0;
+    restructure("Sayfalar eklendi.", async (d) => {
+      const src = await PDFDocument.load(await f.arrayBuffer());
+      const pages = await d.copyPages(src, src.getPageIndices());
+      pages.forEach((p, i) => d.insertPage(cur + i, p));
+      count = pages.length;
+    }, (i) => (i > cur ? i + count : i), () => cur + 1);
+  };
+
+  /* ---------- Metin katmanı ve otomatik vurgu ---------- */
+  async function buildTextLayer(page, cv) {
+    const box = $("pageBox");
+    box.querySelectorAll(".textLayer").forEach((n) => n.remove());
+    const tl = document.createElement("div");
+    tl.className = "textLayer";
+    tl.style.width = cv.style.width; tl.style.height = cv.style.height;
+    tl.style.setProperty("--scale-factor", S.scale);
+    box.insertBefore(tl, overlay);
+    const vp = page.getViewport({ scale: S.scale });
+    try {
+      await pdfjsLib.renderTextLayer({ textContentSource: page.streamTextContent(), container: tl, viewport: vp }).promise;
+    } catch (e) {
+      try {
+        tl.innerHTML = "";
+        await pdfjsLib.renderTextLayer({ textContent: await page.getTextContent(), container: tl, viewport: vp }).promise;
+      } catch (e2) { /* metin yoksa (taranmış PDF) sürükleyerek kutu vurgusu yapılır */ }
+    }
+  }
+
+  /* Seçili metnin satır satır kutularını PDF birimine (pt) çevirir */
+  function selectionRects() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return [];
+    const base = overlay.getBoundingClientRect(), raw = [];
+    for (let i = 0; i < sel.rangeCount; i++) {
+      for (const r of sel.getRangeAt(i).getClientRects()) {
+        if (r.width < 1 || r.height < 2 || r.width > base.width * 1.02) continue;
+        raw.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+      }
+    }
+    raw.sort((p, q) => p.t - q.t || p.l - q.l);
+    const lines = [];
+    for (const r of raw) {
+      const h = r.b - r.t;
+      const ln = lines.find((L) => Math.abs((L.t + L.b) / 2 - (r.t + r.b) / 2) < Math.min(L.b - L.t, h) * 0.6 && r.l - L.r < h * 1.5 && L.l - r.r < h * 1.5);
+      if (ln) { ln.l = Math.min(ln.l, r.l); ln.r = Math.max(ln.r, r.r); ln.t = Math.min(ln.t, r.t); ln.b = Math.max(ln.b, r.b); }
+      else lines.push({ ...r });
+    }
+    return lines
+      .map((L) => ({ x: (L.l - base.left) / S.scale, y: (L.t - base.top) / S.scale, w: (L.r - L.l) / S.scale, h: (L.b - L.t) / S.scale }))
+      .filter((r) => r.w > 1 && r.h > 1 && r.x > -5 && r.y > -5 && r.x + r.w < S.pw + 5 && r.y + r.h < S.ph + 5);
+  }
+
+  function textHlFrom(rects) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    rects.forEach((r) => { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); });
+    return { id: ++uid, type: "texthl", rects, x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  function finishHighlight(s0, e) {
+    const rects = selectionRects();
+    window.getSelection().removeAllRanges();
+    if (rects.length) { const a = textHlFrom(rects); list().push(a); mount(a); return; }
+    const r = overlay.getBoundingClientRect();           // seçilecek metin yoksa: sürüklenen alanı vurgula
+    const x0 = Math.min(s0.x, e.clientX), y0 = Math.min(s0.y, e.clientY);
+    const w = Math.abs(e.clientX - s0.x), h = Math.abs(e.clientY - s0.y);
+    if (w > 5 && h > 5) {
+      const a = { id: ++uid, type: "highlight", x: (x0 - r.left) / S.scale, y: (y0 - r.top) / S.scale, w: w / S.scale, h: h / S.scale };
+      list().push(a); mount(a);
+    }
+  }
+
+  let hlStart = null;
+  $("pageBox").addEventListener("pointerdown", (e) => {
+    if (S.tool === "highlight" && e.target.closest(".textLayer")) hlStart = { x: e.clientX, y: e.clientY };
+  });
+  document.addEventListener("pointerup", (e) => {
+    if (!hlStart) return;
+    const s0 = hlStart; hlStart = null;
+    if (S.tool === "highlight") setTimeout(() => finishHighlight(s0, e), 0);
+  });
+
+  /* ---------- Sayfa gösterme ---------- */
+  async function showPage(n) {
+    S.page = n; S.sel = null;
+    const id = ++renderId;
+    const page = await S.doc.getPage(n);
+    if (id !== renderId) return;
+    const v1 = page.getViewport({ scale: 1 });
+    S.pw = v1.width; S.ph = v1.height;
+    const dpr = window.devicePixelRatio || 1;
+    const cv = document.createElement("canvas");
+    cv.id = "cv";
+    cv.width = Math.floor(v1.width * S.scale * dpr); cv.height = Math.floor(v1.height * S.scale * dpr);
+    cv.style.width = v1.width * S.scale + "px"; cv.style.height = v1.height * S.scale + "px";
+    try {
+      await page.render({ canvasContext: cv.getContext("2d"), viewport: page.getViewport({ scale: S.scale * dpr }) }).promise;
+    } catch (e) { return; }
+    if (id !== renderId) return;
+    $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
+    buildTextLayer(page, cv);
+    overlay.innerHTML = "";
+    (S.anns[n] || []).forEach(mount);
+    $("pageInfo").textContent = n + " / " + S.doc.numPages;
+    $("zoomInfo").textContent = Math.round(S.scale * 100) + "%";
+    $("prevBtn").disabled = n <= 1; $("nextBtn").disabled = n >= S.doc.numPages;
+    [...$("thumbs").children].forEach((b, i) => b.classList.toggle("on", i === n - 1));
+  }
+
+  $("prevBtn").onclick = () => S.page > 1 && showPage(S.page - 1);
+  $("nextBtn").onclick = () => S.page < S.doc.numPages && showPage(S.page + 1);
+  const zoom = (d) => { S.scale = Math.min(3, Math.max(0.4, S.scale + d)); showPage(S.page); };
+  $("zoomIn").onclick = () => zoom(0.15);
+  $("zoomOut").onclick = () => zoom(-0.15);
+
+  /* ---------- Araçlar ---------- */
+  function setTool(t) {
+    S.tool = t; overlay.dataset.tool = t; $("pageBox").dataset.tool = t;
+    document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tool === t));
+  }
+  document.querySelectorAll(".seg button").forEach((b) => (b.onclick = () => {
+    if (!S.doc) { toast("Önce bir PDF aç."); return; }
+    if (b.dataset.tool === "sign") { openSign(); return; }
+    if (b.dataset.tool === "image") { $("imgInput").click(); return; }
+    setTool(b.dataset.tool);
+    if (b.dataset.tool === "highlight") toast("Metni fareyle seç, vurgu satırları otomatik takip eder.");
+  }));
+
+  document.querySelectorAll("#swatches button").forEach((b) => (b.onclick = () => {
+    S.color = b.dataset.c;
+    document.querySelectorAll("#swatches button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    const a = selected(); if (a && a.type === "text") { a.color = S.color; place(a); }
+  }));
+  $("sizeSel").onchange = (e) => {
+    S.size = +e.target.value;
+    const a = selected(); if (a && a.type === "text") { a.size = S.size; place(a); }
+  };
+  /* Araç çubuğuna tıklamak yazı kutusundaki imleci kaybettirmesin */
+  $("bar").addEventListener("mousedown", (e) => { if (e.target.closest("button")) e.preventDefault(); });
+
+  /* ---------- Eklenen öğeler ---------- */
+  const list = () => (S.anns[S.page] ??= []);
+  const selected = () => list().find((a) => a.id === S.sel);
+
+  function place(a) {
+    const s = S.scale, e = a.el;
+    e.style.left = a.x * s + "px"; e.style.top = a.y * s + "px";
+    if (a.type === "text") {
+      const t = e.querySelector(".tx"); t.style.fontSize = a.size * s + "px"; t.style.color = a.color;
+    } else {
+      e.style.width = a.w * s + "px"; e.style.height = a.h * s + "px";
+      if (a.type === "texthl") e.querySelectorAll(".hl-r").forEach((d, i) => {
+        const r = a.rects[i];
+        d.style.left = (r.x - a.x) * s + "px"; d.style.top = (r.y - a.y) * s + "px";
+        d.style.width = r.w * s + "px"; d.style.height = r.h * s + "px";
+      });
+    }
+  }
+
+  function select(a) {
+    S.sel = a ? a.id : null;
+    overlay.querySelectorAll(".ann").forEach((e) => e.classList.toggle("selected", +e.dataset.id === S.sel));
+  }
+
+  function removeAnn(a) {
+    const l = list(); l.splice(l.indexOf(a), 1); a.el.remove();
+    if (S.sel === a.id) S.sel = null;
+  }
+
+  /* Sürükleme yardımcısı: begin() başlangıç değerlerini verir, move() her harekette çağrılır */
+  function track(target, a, begin, move) {
+    target.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation(); select(a);
+      target.setPointerCapture(e.pointerId);
+      const sx = e.clientX, sy = e.clientY, o = begin();
+      const mv = (ev) => move(o, (ev.clientX - sx) / S.scale, (ev.clientY - sy) / S.scale);
+      const up = () => { target.removeEventListener("pointermove", mv); target.removeEventListener("pointerup", up); };
+      target.addEventListener("pointermove", mv); target.addEventListener("pointerup", up);
+    });
+  }
+
+  function mount(a) {
+    const el = document.createElement("div");
+    el.className = "ann " + a.type; el.dataset.id = a.id; a.el = el;
+    const ctl = (cls, label) => { const d = document.createElement(cls === "del" ? "button" : "i"); d.className = cls + " ctl"; if (label) d.setAttribute("aria-label", label); return d; };
+
+    const del = ctl("del", "Sil"); del.textContent = "✕";
+    del.onpointerdown = (e) => e.stopPropagation();
+    del.onclick = () => removeAnn(a);
+
+    const move = (o, dx, dy) => { a.x = o.x + dx; a.y = o.y + dy; place(a); };
+    const begin = () => ({ x: a.x, y: a.y });
+
+    if (a.type === "text") {
+      const tx = document.createElement("div");
+      tx.className = "tx"; tx.contentEditable = "true"; tx.spellcheck = false; tx.textContent = a.text;
+      tx.oninput = () => (a.text = tx.innerText.replace(/\n$/, ""));
+      tx.onfocus = () => select(a);
+      tx.onblur = () => { if (!a.text.trim()) removeAnn(a); };
+      const hd = ctl("hd", "Taşı");
+      track(hd, a, begin, move);
+      el.append(tx, hd, del);
+    } else if (a.type === "texthl") {
+      a.rects.forEach(() => {
+        const d = document.createElement("div"); d.className = "hl-r";
+        d.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); select(a); });
+        el.appendChild(d);
+      });
+      el.append(del);
+    } else {
+      if (a.dataUrl) { const im = new Image(); im.src = a.dataUrl; im.alt = "İmza"; el.appendChild(im); }
+      track(el, a, begin, move);
+      const rs = ctl("rs", "Boyutlandır");
+      track(rs, a, () => ({ w: a.w, h: a.h }), (o, dx, dy) => {
+        a.w = Math.max(14, o.w + dx);
+        a.h = a.dataUrl ? a.w * (o.h / o.w) : Math.max(8, o.h + dy);
+        place(a);
+      });
+      el.append(del, rs);
+    }
+    overlay.appendChild(el);
+    place(a);
+    return el;
+  }
+
+  /* Yazı aracı: tıklanan yere yazı kutusu koyar */
+  overlay.addEventListener("click", (e) => {
+    if (e.target !== overlay || S.tool !== "text") return;
+    const r = overlay.getBoundingClientRect();
+    const a = { id: ++uid, type: "text", text: "", size: S.size, color: S.color,
+                x: (e.clientX - r.left) / S.scale, y: (e.clientY - r.top) / S.scale - S.size * 0.6 };
+    list().push(a); mount(a); select(a); setTool("select");
+    a.el.querySelector(".tx").focus();
+  });
+
+  /* Vurgula aracı: sürükleyerek dikdörtgen çizer */
+  overlay.addEventListener("pointerdown", (e) => {
+    if (e.target !== overlay) return;
+    select(null);
+    if (S.tool === "pen") { startPen(e); return; }
+    if (S.tool !== "highlight") return;
+    const r = overlay.getBoundingClientRect();
+    const x0 = (e.clientX - r.left) / S.scale, y0 = (e.clientY - r.top) / S.scale;
+    const a = { id: ++uid, type: "highlight", x: x0, y: y0, w: 0, h: 0 };
+    list().push(a); mount(a);
+    overlay.setPointerCapture(e.pointerId);
+    const mv = (ev) => {
+      const x1 = (ev.clientX - r.left) / S.scale, y1 = (ev.clientY - r.top) / S.scale;
+      a.x = Math.min(x0, x1); a.y = Math.min(y0, y1); a.w = Math.abs(x1 - x0); a.h = Math.abs(y1 - y0); place(a);
+    };
+    const up = () => {
+      overlay.removeEventListener("pointermove", mv); overlay.removeEventListener("pointerup", up);
+      if (a.w * S.scale < 5 || a.h * S.scale < 5) removeAnn(a); else { select(a); setTool("select"); }
+    };
+    overlay.addEventListener("pointermove", mv); overlay.addEventListener("pointerup", up);
+  });
+
+
+  /* ---------- Serbest çizim (kalem), resim ekleme, geri alma ---------- */
+  $("penSel").onchange = (e) => (S.pen = +e.target.value);
+
+  function startPen(e) {
+    const r = overlay.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const lc = document.createElement("canvas");              // çizerken görünen geçici katman
+    lc.width = r.width * dpr; lc.height = r.height * dpr;
+    lc.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+    overlay.appendChild(lc);
+    const g = lc.getContext("2d"); g.scale(dpr, dpr);
+    g.lineCap = g.lineJoin = "round"; g.lineWidth = S.pen * S.scale; g.strokeStyle = S.color;
+    const pts = [];
+    const add = (ev) => { const p = { x: (ev.clientX - r.left) / S.scale, y: (ev.clientY - r.top) / S.scale }; pts.push(p); return p; };
+    let prev = add(e);
+    g.beginPath(); g.moveTo(prev.x * S.scale, prev.y * S.scale); g.lineTo(prev.x * S.scale + 0.01, prev.y * S.scale); g.stroke();
+    overlay.setPointerCapture(e.pointerId);
+    const mv = (ev) => {
+      const p = add(ev);
+      g.beginPath(); g.moveTo(prev.x * S.scale, prev.y * S.scale); g.lineTo(p.x * S.scale, p.y * S.scale); g.stroke();
+      prev = p;
+    };
+    const up = () => {
+      ["pointermove", "pointerup", "pointercancel"].forEach((n) => overlay.removeEventListener(n, n === "pointermove" ? mv : up));
+      lc.remove(); finishPen(pts);
+    };
+    overlay.addEventListener("pointermove", mv);
+    overlay.addEventListener("pointerup", up);
+    overlay.addEventListener("pointercancel", up);
+  }
+
+  /* Çizilen çizgiyi şeffaf bir resme çevirip sayfaya ekler */
+  function finishPen(pts) {
+    const pad = S.pen / 2 + 1;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+    const k = 4, w = x1 - x0, h = y1 - y0;
+    const c = document.createElement("canvas"); c.width = Math.ceil(w * k); c.height = Math.ceil(h * k);
+    const g = c.getContext("2d");
+    g.lineCap = g.lineJoin = "round"; g.lineWidth = S.pen * k; g.strokeStyle = S.color;
+    g.beginPath();
+    pts.forEach((p, i) => { const X = (p.x - x0) * k, Y = (p.y - y0) * k; i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    if (pts.length === 1) g.lineTo((pts[0].x - x0) * k + 0.01, (pts[0].y - y0) * k);
+    g.stroke();
+    const a = { id: ++uid, type: "draw", dataUrl: c.toDataURL("image/png"), x: x0, y: y0, w, h };
+    list().push(a); mount(a);
+  }
+
+  $("imgInput").onchange = (e) => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { toast("Lütfen bir resim dosyası seç.", true); return; }
+    const url = URL.createObjectURL(f), im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));   // çok büyük resimleri küçült
+      const c = document.createElement("canvas");
+      c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      let w = Math.min(S.pw * 0.4, 260), h = w * c.height / c.width;
+      if (h > S.ph * 0.7) { h = S.ph * 0.7; w = h * c.width / c.height; }
+      const jpg = f.type === "image/jpeg";
+      const a = { id: ++uid, type: "image", w, h, x: (S.pw - w) / 2, y: (S.ph - h) / 2,
+                  dataUrl: jpg ? c.toDataURL("image/jpeg", 0.9) : c.toDataURL("image/png") };
+      list().push(a); mount(a); select(a); setTool("select");
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); toast("Resim açılamadı.", true); };
+    im.src = url;
+  };
+
+  const undo = () => { const a = list()[list().length - 1]; if (a) removeAnn(a); };
+  $("undoBtn").onclick = undo;
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !document.activeElement.isContentEditable) { e.preventDefault(); undo(); }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && S.sel && !document.activeElement.isContentEditable) {
+      const a = selected(); if (a) { e.preventDefault(); removeAnn(a); }
+    }
+  });
+
+  /* ---------- İmza penceresi ---------- */
+  const dlg = $("signDlg"), sc = $("signCv"), sx = sc.getContext("2d");
+  sx.lineWidth = 3.2; sx.lineCap = "round"; sx.lineJoin = "round"; sx.strokeStyle = "#14213d";
+  let drawing = false;
+  const pt = (e) => { const r = sc.getBoundingClientRect(); return { x: (e.clientX - r.left) * sc.width / r.width, y: (e.clientY - r.top) * sc.height / r.height }; };
+  sc.addEventListener("pointerdown", (e) => {
+    drawing = true; sc.setPointerCapture(e.pointerId);
+    const p = pt(e); sx.beginPath(); sx.moveTo(p.x, p.y); sx.lineTo(p.x + 0.01, p.y); sx.stroke();
+  });
+  sc.addEventListener("pointermove", (e) => { if (!drawing) return; const p = pt(e); sx.lineTo(p.x, p.y); sx.stroke(); });
+  ["pointerup", "pointercancel"].forEach((ev) => sc.addEventListener(ev, () => (drawing = false)));
+
+  const clearSign = () => sx.clearRect(0, 0, sc.width, sc.height);
+  function openSign() { clearSign(); dlg.showModal(); }
+  $("signClear").onclick = clearSign;
+  $("signCancel").onclick = () => dlg.close();
+
+  $("signOk").onclick = () => {
+    const w = sc.width, h = sc.height, d = sx.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (x1 < 0) { toast("Önce imzanı çiz.", true); return; }
+    x0 = Math.max(0, x0 - 4); y0 = Math.max(0, y0 - 4); x1 = Math.min(w - 1, x1 + 4); y1 = Math.min(h - 1, y1 + 4);
+    const c = document.createElement("canvas"); c.width = x1 - x0 + 1; c.height = y1 - y0 + 1;
+    c.getContext("2d").drawImage(sc, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+    const wpt = Math.min(160, S.pw * 0.5);
+    const a = { id: ++uid, type: "sign", dataUrl: c.toDataURL("image/png"), w: wpt, h: wpt * c.height / c.width, x: 0, y: 0 };
+    a.x = (S.pw - a.w) / 2; a.y = (S.ph - a.h) / 2;
+    list().push(a); mount(a); select(a); setTool("select");
+    dlg.close();
+  };
+
+  /* ---------- PDF’e işleyip indirme ---------- */
+  const hexRgb = (h) => rgb(parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255);
+
+  /* Helvetica’da olmayan harfler (ğ, ş, İ, ı …) için yazıyı resim olarak hazırlar */
+  function textAsPng(lines, size, color) {
+    const k = 3, f = size * k + "px Helvetica, Arial, sans-serif", m = document.createElement("canvas").getContext("2d");
+    m.font = f;
+    const w = Math.ceil(Math.max(...lines.map((l) => m.measureText(l).width))) + 4;
+    const c = document.createElement("canvas"); c.width = w; c.height = Math.ceil(lines.length * size * 1.25 * k);
+    const g = c.getContext("2d"); g.font = f; g.fillStyle = color; g.textBaseline = "top";
+    lines.forEach((l, i) => g.fillText(l, 0, i * size * 1.25 * k + size * 0.12 * k));
+    return { url: c.toDataURL("image/png"), w: w / k, h: c.height / k };
+  }
+
+  $("saveBtn").onclick = async () => {
+    const btn = $("saveBtn"); btn.disabled = true; btn.textContent = "Hazırlanıyor…";
+    try {
+      const doc = await PDFDocument.load(S.bytes);
+      const font = await doc.embedFont(StandardFonts.Helvetica);
+      const pages = doc.getPages();
+      for (const [no, items] of Object.entries(S.anns)) {
+        const page = pages[no - 1], H = page.getHeight();
+        for (const a of items) {
+          if (a.type === "highlight") {
+            page.drawRectangle({ x: a.x, y: H - a.y - a.h, width: a.w, height: a.h, color: rgb(1, 0.87, 0.24), opacity: 0.45 });
+          } else if (a.type === "texthl") {
+            a.rects.forEach((r) => page.drawRectangle({ x: r.x, y: H - r.y - r.h, width: r.w, height: r.h, color: rgb(1, 0.87, 0.24), opacity: 0.45 }));
+          } else if (a.dataUrl) {
+            const img = a.dataUrl.startsWith("data:image/jpeg") ? await doc.embedJpg(a.dataUrl) : await doc.embedPng(a.dataUrl);
+            page.drawImage(img, { x: a.x, y: H - a.y - a.h, width: a.w, height: a.h });
+          } else if (a.text.trim()) {
+            const lines = a.text.split("\n");
+            let ok = true;
+            try { lines.forEach((l) => font.encodeText(l)); } catch (e) { ok = false; }
+            if (ok) {
+              lines.forEach((l, i) => page.drawText(l, { x: a.x, y: H - (a.y + a.size * 0.95 + i * a.size * 1.25), size: a.size, font, color: hexRgb(a.color) }));
+            } else {
+              const t = textAsPng(lines, a.size, a.color), img = await doc.embedPng(t.url);
+              page.drawImage(img, { x: a.x, y: H - a.y - t.h, width: t.w, height: t.h });
+            }
+          }
+        }
+      }
+      const out = await doc.save();
+      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      const l = document.createElement("a"); l.href = url; l.download = S.name + "-duzenlenmis.pdf";
+      document.body.appendChild(l); l.click(); l.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast("Hazır, indirme başladı.");
+    } catch (err) {
+      toast("PDF kaydedilemedi: " + (err.message || "bilinmeyen hata"), true);
+    }
+    btn.disabled = false; btn.textContent = "İndir";
+  };
+</script>
+</body>
+</html>

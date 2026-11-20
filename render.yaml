@@ -1,0 +1,14 @@
+# Render Blueprint (isteğe bağlı): depoyu bağlayınca statik site olarak yayınlar.
+services:
+  - type: web
+    name: pdf-studyo
+    runtime: static
+    buildCommand: echo "Statik site, derleme gerekmez"
+    staticPublishPath: ./
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
