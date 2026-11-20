@@ -61,6 +61,45 @@
   .swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--accent); }
   select { background: var(--bg); border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 8px; }
   .sp { flex: 1; }
+  /* ---------- PDF metin arama ---------- */
+
+.search-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 3px 5px;
+}
+
+.search-group input {
+  width: 155px;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px;
+}
+
+.search-group input:focus {
+  outline: none;
+}
+
+.search-group span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 35px;
+  text-align: center;
+}
+
+.search-group button {
+  padding: 4px 9px;
+}
   .grp { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
   .grp .btn { padding: 5px 11px; }
 
@@ -159,6 +198,17 @@
     <button data-c="#d92d20" style="background:#d92d20" aria-label="Kırmızı" aria-pressed="false"></button>
     <button data-c="#16803c" style="background:#16803c" aria-label="Yeşil" aria-pressed="false"></button>
   </div>
+  <div class="search-group" id="searchGroup">
+  <input
+    type="search"
+    id="searchInput"
+    placeholder="PDF içinde ara..."
+    aria-label="PDF içinde metin ara"
+  >
+  <span id="searchCount">0 / 0</span>
+  <button class="btn" id="searchPrev" disabled title="Önceki sonuç">↑</button>
+  <button class="btn" id="searchNext" disabled title="Sonraki sonuç">↓</button>
+</div>
   <select id="sizeSel" aria-label="Yazı boyutu">
     <option>12</option><option>14</option><option selected>16</option><option>20</option><option>24</option><option>32</option>
   </select>
