@@ -133,6 +133,13 @@
   .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; pointer-events: none; user-select: none; -webkit-user-select: none; text-size-adjust: none; transform-origin: 0 0; }
   .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
   .textLayer ::selection { background: rgba(255,222,60,.6); }
+  /* Arama sonucu vurgusu */
+.search-hit {
+  background: rgba(255, 190, 0, 0.75);
+  color: transparent !important;
+  border-radius: 2px;
+  outline: 1px solid rgba(220, 140, 0, 0.8);
+}
   #pageBox[data-tool="highlight"] .textLayer { pointer-events: auto; user-select: text; -webkit-user-select: text; }
 
   /* ---------- Eklenen öğeler ---------- */
@@ -500,6 +507,7 @@
     if (id !== renderId) return;
     $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
     buildTextLayer(page, cv);
+    applySearchHighlight(activeSearchQuery);
     overlay.innerHTML = "";
     (S.anns[n] || []).forEach(mount);
     $("pageInfo").textContent = n + " / " + S.doc.numPages;
@@ -853,16 +861,84 @@ async function searchPdf(query) {
   return results;
 }
   
-// Arama sonuçlarının durumu
+
+// Arama durumu
 let searchResults = [];
 let searchIndex = -1;
 let searchToken = 0;
+let activeSearchQuery = "";
 
-// Arama kutusuna yazıldığında
+// Sayfadaki eski arama vurgularını temizle ve yenilerini ekle
+function applySearchHighlight(query) {
+  const textLayer = document.querySelector("#pageBox .textLayer");
+  if (!textLayer) return;
+
+  // Önce eski vurguları kaldır
+  textLayer.querySelectorAll("mark.search-hit").forEach(mark => {
+    mark.replaceWith(document.createTextNode(mark.textContent));
+  });
+  textLayer.normalize();
+
+  if (!query) return;
+
+  const needle = query.toLocaleLowerCase("tr-TR");
+  if (!needle) return;
+
+  // Metin katmanındaki kelimeleri tara
+  const walker = document.createTreeWalker(
+    textLayer,
+    NodeFilter.SHOW_TEXT
+  );
+
+  const nodes = [];
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeValue.trim()) {
+      nodes.push(walker.currentNode);
+    }
+  }
+
+  nodes.forEach(node => {
+    const original = node.nodeValue;
+    const lower = original.toLocaleLowerCase("tr-TR");
+
+    let position = 0;
+    let found = -1;
+    const fragment = document.createDocumentFragment();
+
+    while ((found = lower.indexOf(needle, position)) !== -1) {
+      // Eşleşmeden önceki metin
+      if (found > position) {
+        fragment.appendChild(
+          document.createTextNode(original.slice(position, found))
+        );
+      }
+
+      // Bulunan kelime
+      const mark = document.createElement("mark");
+      mark.className = "search-hit";
+      mark.textContent = original.slice(found, found + needle.length);
+      fragment.appendChild(mark);
+
+      position = found + needle.length;
+    }
+
+    if (position > 0) {
+      if (position < original.length) {
+        fragment.appendChild(
+          document.createTextNode(original.slice(position))
+        );
+      }
+      node.replaceWith(fragment);
+    }
+  });
+}
+
+// Arama kutusu
 $("searchInput").addEventListener("input", async () => {
   const query = $("searchInput").value.trim();
   const token = ++searchToken;
 
+  activeSearchQuery = query;
   searchResults = [];
   searchIndex = -1;
 
@@ -870,22 +946,27 @@ $("searchInput").addEventListener("input", async () => {
   $("searchPrev").disabled = true;
   $("searchNext").disabled = true;
 
-  if (!query || !S.doc) return;
+  if (!query || !S.doc) {
+    applySearchHighlight("");
+    return;
+  }
 
   try {
     const results = await searchPdf(query);
 
-    // Eski bir arama işleminin yeni sonucu ezmesini önle
+    // Eski aramanın yeni sonucu ezmesini engelle
     if (token !== searchToken) return;
 
     searchResults = results;
 
     if (searchResults.length === 0) {
       $("searchCount").textContent = "0 / 0";
+      applySearchHighlight("");
       return;
     }
 
     searchIndex = 0;
+
     $("searchCount").textContent =
       (searchIndex + 1) + " / " + searchResults.length;
 
@@ -899,9 +980,9 @@ $("searchInput").addEventListener("input", async () => {
   }
 });
 
-// Önceki sonuç
+// Önceki arama sonucu
 $("searchPrev").onclick = async () => {
-  if (searchResults.length === 0) return;
+  if (!searchResults.length) return;
 
   searchIndex =
     (searchIndex - 1 + searchResults.length) % searchResults.length;
@@ -912,11 +993,12 @@ $("searchPrev").onclick = async () => {
   await showPage(searchResults[searchIndex].page);
 };
 
-// Sonraki sonuç
+// Sonraki arama sonucu
 $("searchNext").onclick = async () => {
-  if (searchResults.length === 0) return;
+  if (!searchResults.length) return;
 
-  searchIndex = (searchIndex + 1) % searchResults.length;
+  searchIndex =
+    (searchIndex + 1) % searchResults.length;
 
   $("searchCount").textContent =
     (searchIndex + 1) + " / " + searchResults.length;
