@@ -31,7 +31,41 @@ input[type=file]{display:none}
 .fileinfo{min-width:0;flex:1}.filename{font-size:13px;font-weight:800;overflow-wrap:anywhere}.filesize{font-size:11px;color:var(--muted);margin-top:4px}
 .remove{background:transparent;color:var(--muted);font-size:20px;padding:5px 9px}
 .section-title{font-size:15px;font-weight:800;margin:28px 0 13px}
-.levels{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.levels{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+
+.target-controls{
+  margin-top:15px;
+  padding:18px;
+  border:1px solid #ded9fa;
+  border-radius:15px;
+  background:#faf9ff;
+}
+.target-controls[hidden]{display:none}
+.target-controls label{
+  display:block;
+  font-size:12px;
+  font-weight:800;
+  margin-bottom:9px;
+}
+.target-row{display:flex;gap:10px}
+.target-row input,.target-row select{
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px;
+  background:white;
+  color:var(--ink);
+  font:inherit;
+}
+.target-row input{flex:1}
+.target-row select{width:100px}
+.target-help{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.6;
+  margin-top:9px;
+}
 .level{position:relative;border:1.5px solid var(--line);border-radius:15px;padding:17px 15px;cursor:pointer;transition:.18s;background:#fff}
 .level:has(input:checked){border-color:var(--accent);background:#faf9ff;box-shadow:0 0 0 3px #5b3df514}
 .level input{position:absolute;opacity:0}.level strong{display:block;font-size:13px;margin-bottom:6px}.level span{display:block;color:var(--muted);font-size:11px;line-height:1.6}.level em{display:block;color:var(--accent);font-style:normal;font-size:10px;font-weight:800;margin-top:9px}
@@ -74,7 +108,43 @@ footer{text-align:center;color:#9296a8;font-size:11px;padding:0 20px 35px}
       <label class="level"><input type="radio" name="level" value="light"><strong>Hafif</strong><span>PDF yapısını yeniden düzenler, akışları yeniden sıkıştırmaz.</span><em>En temkinli işlem</em></label>
       <label class="level"><input type="radio" name="level" value="balanced" checked><strong>Önerilen</strong><span>Akışları ve PDF nesnelerini daha verimli biçimde düzenler.</span><em>Dengeli optimizasyon</em></label>
       <label class="level"><input type="radio" name="level" value="strong"><strong>Güçlü</strong><span>Flate akışlarını daha yüksek sıkıştırma seviyesiyle yeniden işler.</span><em>En kapsamlı yapısal işlem</em></label>
+      <label class="level">
+  
+        <label class="level">
+       <input type="radio" name="level" value="target">
+        <strong>Hedef boyut</strong>
+         <span>PDF'ni istediğin dosya boyutuna indirmeyi dene.</span>
+          <em>Boyutu sen belirle</em>
+           </label>
+   
     </div>
+
+    <div class="target-controls" id="targetControls" hidden>
+  <label for="targetValue">İstediğin maksimum dosya boyutu</label>
+
+  <div class="target-row">
+    <input
+      type="number"
+      id="targetValue"
+      value="2"
+      min="0.1"
+      max="1000"
+      step="0.1"
+      inputmode="decimal"
+    >
+
+    <select id="targetUnit">
+      <option value="MB" selected>MB</option>
+      <option value="KB">KB</option>
+    </select>
+  </div>
+
+  <span class="target-help">
+    Örneğin 2 MB, 1.5 MB veya 750 KB.
+    Sistem belirlediğin boyuta ulaşmaya çalışır.
+  </span>
+</div> 
+    
     <div class="notice"><span>ⓘ</span><span>Bu araç sayfaları resme dönüştürmez. Metin, vektör ve sayfa içeriği korunarak PDF'nin iç yapısı optimize edilir. Görseller yeniden boyutlandırılmaz; bu nedenle her dosyada küçülme garantisi yoktur. Sonuç orijinalden büyükse orijinal dosyan korunur.</span></div>
     <div class="actions">
       <div class="privacy">🔒 Dosyan sunucuya gönderilmez.<br>İşlem tarayıcında, WebAssembly ile yapılır.</div>
@@ -120,25 +190,198 @@ const drop=$("drop");
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over")}));
 drop.addEventListener("drop",e=>setFile(e.dataTransfer.files[0]));
 
+  // Target-size option interface
+document.querySelectorAll('input[name="level"]').forEach(input=>{
+  input.addEventListener("change",()=>{
+    const target=input.value==="target";
+
+    $("targetControls").hidden=!target;
+
+    $("compressBtn").textContent=target
+      ? "Hedef boyuta sıkıştır"
+      : "PDF'yi optimize et";
+  });
+});
+
 function stopWorker(){if(worker){worker.terminate();worker=null}}
+
 async function compress(){
  if(!selectedFile)return;
- $("compressBtn").disabled=true;$("error").style.display="none";$("result").style.display="none";
+
+ const level=document.querySelector(
+   'input[name="level"]:checked'
+ ).value;
+
+ const targetMode=level==="target";
+ let targetBytes=0;
+
+ if(targetMode){
+   const value=Number($("targetValue").value);
+   const unit=$("targetUnit").value;
+
+   if(!Number.isFinite(value)||value<=0){
+     showError("Lütfen geçerli bir hedef boyut gir.");
+     return;
+   }
+
+   targetBytes=value*(unit==="MB"?1024*1024:1024);
+ }
+
+ $("compressBtn").disabled=true;
+ $("error").style.display="none";
+ $("result").style.display="none";
+
  try{
-  setProgress(4,"PDF okunuyor…");
-  const bytes=await selectedFile.arrayBuffer();
-  const header=new TextDecoder("latin1").decode(new Uint8Array(bytes,0,Math.min(1024,bytes.byteLength)));
-  if(!header.includes("%PDF-"))throw new Error("Dosyanın PDF başlığı okunamadı. Dosya bozuk olabilir.");
-  setProgress(12,"Optimizasyon motoru hazırlanıyor…");
-  stopWorker();
-  worker=new Worker("./pdf-compress-worker.js",{type:"module"});
-  const level=document.querySelector('input[name="level"]:checked').value;
-  const result=await new Promise((resolve,reject)=>{
-    const timeout=setTimeout(()=>reject(new Error("İşlem zaman aşımına uğradı. Daha küçük bir PDF ile tekrar dene.")),180000);
-    worker.onmessage=e=>{clearTimeout(timeout);e.data.error?reject(new Error(e.data.error)):resolve(e.data)};
-    worker.onerror=e=>{clearTimeout(timeout);reject(new Error("Optimizasyon motoru yüklenemedi. Sayfayı GitHub Pages üzerinden açtığından ve internet bağlantın olduğundan emin ol."))};
-    worker.postMessage({bytes,level},[bytes]);
-  });
+   setProgress(4,"PDF okunuyor…");
+
+   const bytes=await selectedFile.arrayBuffer();
+
+   const header=new TextDecoder("latin1").decode(
+     new Uint8Array(bytes,0,Math.min(1024,bytes.byteLength))
+   );
+
+   if(!header.includes("%PDF-")){
+     throw new Error("Dosyanın PDF başlığı okunamadı.");
+   }
+
+   setProgress(12,"Optimizasyon motoru hazırlanıyor…");
+
+   stopWorker();
+
+   worker=new Worker(
+     targetMode
+       ? "./pdf-target-compress-worker.js"
+       : "./pdf-compress-worker.js",
+     {type:"module"}
+   );
+
+   const result=await new Promise((resolve,reject)=>{
+     const timeout=setTimeout(()=>{
+       reject(new Error(
+         "İşlem zaman aşımına uğradı. Daha küçük bir PDF ile tekrar dene."
+       ));
+     },300000);
+
+     worker.onmessage=e=>{
+       // Target worker can report intermediate progress.
+       if(e.data.progress!==undefined){
+         setProgress(e.data.progress,e.data.message);
+         return;
+       }
+
+       clearTimeout(timeout);
+
+       if(e.data.error){
+         reject(new Error(e.data.error));
+       }else{
+         resolve(e.data);
+       }
+     };
+
+     worker.onerror=()=>{
+       clearTimeout(timeout);
+
+       reject(new Error(
+         "Optimizasyon motoru yüklenemedi. İnternet bağlantını ve worker dosyalarını kontrol et."
+       ));
+     };
+
+     worker.postMessage(
+       targetMode
+         ? {bytes,targetBytes}
+         : {bytes,level},
+       [bytes]
+     );
+   });
+
+   setProgress(92,"Sonuç kontrol ediliyor…");
+
+   const optimized=new Blob(
+     [result.bytes],
+     {type:"application/pdf"}
+   );
+
+   const originalSize=selectedFile.size;
+   const didShrink=optimized.size<originalSize;
+
+   // Never return a larger file than the original.
+   outputBlob=didShrink?optimized:selectedFile;
+
+   outputName=selectedFile.name.replace(/\.pdf$/i,"")+
+     (didShrink
+       ? (targetMode?"_hedef":"_optimize")
+       : "_orijinal")+".pdf";
+
+   const finalSize=outputBlob.size;
+   const pct=Math.abs((1-finalSize/originalSize)*100);
+
+   const targetReached=targetMode&&(
+     result.alreadyUnderTarget||
+     finalSize<=targetBytes
+   );
+
+   $("beforeSize").textContent=fmt(originalSize);
+   $("afterSize").textContent=fmt(finalSize);
+
+   if(targetMode&&result.alreadyUnderTarget){
+     $("saving").textContent="Hedef zaten sağlanıyor";
+   }else if(didShrink){
+     $("saving").textContent=
+       `%${pct.toFixed(1)} küçüldü`;
+   }else{
+     $("saving").textContent="Boyut değişmedi";
+   }
+
+   $("saving").className=didShrink?"saving":"neutral";
+
+   if(targetMode){
+     $("resultTitle").textContent=targetReached
+       ?"✓ Hedef boyuta ulaşıldı"
+       :"✓ En iyi sonuç hazır";
+
+     if(result.alreadyUnderTarget){
+       $("resultNote").textContent=
+         `Dosyan zaten istediğin ${fmt(targetBytes)} sınırının altında. Orijinal PDF korundu.`;
+     }else if(result.changedImages===0){
+       $("resultNote").textContent=
+         "PDF içerisinde güvenli biçimde yeniden sıkıştırılabilecek desteklenen RGB JPEG görsel bulunamadı. Orijinal dosyan korundu.";
+     }else if(targetReached){
+       $("resultNote").textContent=
+         `${result.changedImages} görsel yeniden sıkıştırıldı. İstenen ${fmt(targetBytes)} hedef boyutuna ulaşıldı. Metin ve vektör içerikleri resme dönüştürülmedi.`;
+     }else{
+       $("resultNote").textContent=
+         `${result.changedImages} görsel yeniden sıkıştırıldı ancak hedef boyuta ulaşılamadı. Desteklenmeyen görseller ve diğer PDF içerikleri boyutu sınırlıyor. Elde edilen en küçük güvenli sonuç sunuluyor.`;
+     }
+
+   }else{
+     $("resultTitle").textContent=didShrink
+       ?"✓ PDF başarıyla optimize edildi"
+       :"✓ Orijinal PDF korundu";
+
+     $("resultNote").textContent=didShrink
+       ?"PDF'nin yapısı optimize edildi. Sayfalar resme dönüştürülmedi; metin ve vektör içerikleri korunur."
+       :"Optimizasyon dosyayı küçültmedi. Daha büyük bir dosya vermemek için orijinal PDF sunuluyor.";
+   }
+
+   $("downloadBtn").textContent=didShrink
+     ?"Optimize edilmiş PDF'yi indir ↓"
+     :"Orijinal PDF'yi indir ↓";
+
+   $("result").style.display="block";
+
+   setProgress(100,"Tamamlandı");
+
+ }catch(err){
+   console.error(err);
+   showError(
+     err.message||"PDF optimize edilemedi."
+   );
+ }finally{
+   stopWorker();
+   $("compressBtn").disabled=!selectedFile;
+ }
+}
+
   setProgress(90,"Sonuç kontrol ediliyor…");
   const optimized=new Blob([result.bytes],{type:"application/pdf"});
   const originalSize=selectedFile.size;
