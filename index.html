@@ -914,6 +914,8 @@
     btn.disabled = false; btn.textContent = "İndir";
   };
 // PDF içinde metin arama
+
+// PDF içinde geçen HER kelimeyi ayrı sonuç olarak bul
 async function searchPdf(query) {
   if (!S.doc || !query.trim()) return [];
 
@@ -924,20 +926,31 @@ async function searchPdf(query) {
     const page = await S.doc.getPage(i);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map(item => item.str)
-      .join(" ");
+    let occurrenceOnPage = 0;
 
-    if (pageText.toLocaleLowerCase("tr-TR").includes(needle)) {
-      results.push({
-        page: i,
-        text: pageText
-      });
+    for (const item of textContent.items) {
+      if (!item.str) continue;
+
+      const text = item.str.toLocaleLowerCase("tr-TR");
+      let position = 0;
+      let found;
+
+      while ((found = text.indexOf(needle, position)) !== -1) {
+        occurrenceOnPage++;
+
+        results.push({
+          page: i,
+          occurrenceOnPage: occurrenceOnPage
+        });
+
+        position = found + needle.length;
+      }
     }
   }
 
   return results;
 }
+
   
 
 // Arama durumu
@@ -947,26 +960,88 @@ let searchToken = 0;
 let activeSearchQuery = "";
 
 // Sayfadaki eski arama vurgularını temizle ve yenilerini ekle
+
+// Yalnızca seçili arama sonucunu vurgula
 function applySearchHighlight(query) {
   const textLayer = pageBoxes[S.page - 1]?.querySelector(".textLayer");
   if (!textLayer) return;
 
-  // Önce eski vurguları kaldır
+  // Önce önceki vurguyu kaldır
   textLayer.querySelectorAll("mark.search-hit").forEach(mark => {
     mark.replaceWith(document.createTextNode(mark.textContent));
   });
+
   textLayer.normalize();
 
-  if (!query) return;
+  if (!query || searchIndex < 0 || !searchResults.length) return;
+
+  const currentResult = searchResults[searchIndex];
+
+  // Sadece seçili sonucun bulunduğu sayfada çalış
+  if (!currentResult || currentResult.page !== S.page) return;
 
   const needle = query.toLocaleLowerCase("tr-TR");
   if (!needle) return;
 
-  // Metin katmanındaki kelimeleri tara
   const walker = document.createTreeWalker(
     textLayer,
     NodeFilter.SHOW_TEXT
   );
+
+  const nodes = [];
+
+  while (walker.nextNode()) {
+    if (walker.currentNode.nodeValue.trim()) {
+      nodes.push(walker.currentNode);
+    }
+  }
+
+  let occurrence = 0;
+  let highlighted = false;
+
+  for (const node of nodes) {
+    if (highlighted) break;
+
+    const original = node.nodeValue;
+    const lower = original.toLocaleLowerCase("tr-TR");
+
+    let position = 0;
+    let found;
+
+    while ((found = lower.indexOf(needle, position)) !== -1) {
+      occurrence++;
+
+      if (occurrence === currentResult.occurrenceOnPage) {
+        const fragment = document.createDocumentFragment();
+
+        if (found > 0) {
+          fragment.appendChild(
+            document.createTextNode(original.slice(0, found))
+          );
+        }
+
+        const mark = document.createElement("mark");
+        mark.className = "search-hit";
+        mark.textContent = original.slice(found, found + needle.length);
+
+        fragment.appendChild(mark);
+
+        if (found + needle.length < original.length) {
+          fragment.appendChild(
+            document.createTextNode(original.slice(found + needle.length))
+          );
+        }
+
+        node.replaceWith(fragment);
+        highlighted = true;
+        break;
+      }
+
+      position = found + needle.length;
+    }
+  }
+}
+
 
   const nodes = [];
   while (walker.nextNode()) {
