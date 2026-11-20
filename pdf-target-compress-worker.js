@@ -33,10 +33,7 @@ async function getEngine() {
 function isSafeJpeg(info) {
   const masks = info.masks || {};
 
-  // Only handle ordinary RGB JPEG images.
-  // Masks, transparency and special color spaces are
-  // deliberately left untouched.
-
+  // Yalnızca normal, 8-bit RGB JPEG görsellerini işle.
   if (info.bitsPerComponent !== 8) return false;
   if (info.colorSpaceInfo?.family !== "DeviceRGB") return false;
 
@@ -48,13 +45,14 @@ function isSafeJpeg(info) {
 
   if (info.decode !== null) return false;
 
+  // Maske ve şeffaflık kullanan görsellere dokunma.
   if (
     masks.isStencilMask ||
     masks.softMaskInData ||
     masks.softMask ||
     masks.mask ||
-    masks.softMaskOf?.length ||
-    masks.maskOf?.length
+    masks.softMaskOf?.length > 0 ||
+    masks.maskOf?.length > 0
   ) return false;
 
   return true;
