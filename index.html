@@ -152,12 +152,20 @@
 }
   .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
   .textLayer ::selection { background: rgba(255,222,60,.6); }
-  /* Arama sonucu vurgusu */
+ /* Aktif arama sonucunun vurgusu */
+#searchHighlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
 .search-hit {
-  background: rgba(255, 190, 0, 0.75);
-  color: transparent !important;
+  position: absolute;
+  background: rgba(148, 163, 184, 0.35);
+  border: 1px solid rgba(100, 116, 139, 0.35);
   border-radius: 2px;
-  outline: 1px solid rgba(220, 140, 0, 0.8);
+  pointer-events: none;
 }
   #pageBox[data-tool="highlight"] .textLayer { pointer-events: auto; user-select: text; -webkit-user-select: text; }
 
@@ -524,10 +532,17 @@
       await page.render({ canvasContext: cv.getContext("2d"), viewport: page.getViewport({ scale: S.scale * dpr }) }).promise;
     } catch (e) { return; }
     if (id !== renderId) return;
-    $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
-   await buildTextLayer(page, cv);
-    applySearchHighlight(activeSearchQuery);
-    overlay.innerHTML = "";
+   $("pageBox").replaceChild(cv, $("pageBox").querySelector("canvas"));
+await buildTextLayer(page, cv);
+
+overlay.innerHTML = "";
+
+const currentResult =
+  searchResults.length && searchIndex >= 0
+    ? searchResults[searchIndex]
+    : null;
+
+applySearchHighlight(activeSearchQuery, currentResult);
     (S.anns[n] || []).forEach(mount);
     $("pageInfo").textContent = n + " / " + S.doc.numPages;
     $("zoomInfo").textContent = Math.round(S.scale * 100) + "%";
@@ -854,32 +869,44 @@
     }
     btn.disabled = false; btn.textContent = "İndir";
   };
-// PDF içinde metin arama
+
+// PDF içinde her eşleşmeyi ayrı ayrı bul
 async function searchPdf(query) {
   if (!S.doc || !query.trim()) return [];
 
   const results = [];
   const needle = query.trim().toLocaleLowerCase("tr-TR");
 
-  for (let i = 1; i <= S.doc.numPages; i++) {
-    const page = await S.doc.getPage(i);
+  for (let pageNo = 1; pageNo <= S.doc.numPages; pageNo++) {
+    const page = await S.doc.getPage(pageNo);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map(item => item.str)
-      .join(" ");
+    // Her PDF metin öğesini ayrı ayrı tara
+    textContent.items.forEach((item, itemIndex) => {
+      if (!item.str) return;
 
-    if (pageText.toLocaleLowerCase("tr-TR").includes(needle)) {
-      results.push({
-        page: i,
-        text: pageText
-      });
-    }
+      const original = item.str;
+      const lower = original.toLocaleLowerCase("tr-TR");
+
+      let position = 0;
+      let found;
+
+      while ((found = lower.indexOf(needle, position)) !== -1) {
+        results.push({
+          page: pageNo,
+          itemIndex: itemIndex,
+          start: found,
+          end: found + needle.length
+        });
+
+        position = found + needle.length;
+      }
+    });
   }
 
   return results;
 }
-  
+
 
 // Arama durumu
 let searchResults = [];
@@ -887,70 +914,93 @@ let searchIndex = -1;
 let searchToken = 0;
 let activeSearchQuery = "";
 
-// Sayfadaki eski arama vurgularını temizle ve yenilerini ekle
-function applySearchHighlight(query) {
-  const textLayer = document.querySelector("#pageBox .textLayer");
+
+// Yalnızca aktif eşleşmeyi vurgula
+function applySearchHighlight(query, result) {
+  const pageBox = $("pageBox");
+  const textLayer = pageBox.querySelector(".textLayer");
+
   if (!textLayer) return;
 
-  // Önce eski vurguları kaldır
-  textLayer.querySelectorAll("mark.search-hit").forEach(mark => {
-    mark.replaceWith(document.createTextNode(mark.textContent));
-  });
-  textLayer.normalize();
+  // Eski görsel vurguları temizle
+  let highlightLayer = pageBox.querySelector("#searchHighlights");
 
-  if (!query) return;
+  if (!highlightLayer) {
+    highlightLayer = document.createElement("div");
+    highlightLayer.id = "searchHighlights";
+    pageBox.appendChild(highlightLayer);
+  }
 
-  const needle = query.toLocaleLowerCase("tr-TR");
-  if (!needle) return;
+  highlightLayer.innerHTML = "";
 
-  // Metin katmanındaki kelimeleri tara
+  if (!query || !result || result.page !== S.page) return;
+
+  // PDF.js metin katmanındaki metin öğeleri
+  const spans = textLayer.querySelectorAll("span");
+  const span = spans[result.itemIndex];
+
+  if (!span) return;
+
+  // İlgili metin öğesinin içindeki tam eşleşmeyi seç
   const walker = document.createTreeWalker(
-    textLayer,
+    span,
     NodeFilter.SHOW_TEXT
   );
 
-  const nodes = [];
-  while (walker.nextNode()) {
-    if (walker.currentNode.nodeValue.trim()) {
-      nodes.push(walker.currentNode);
+  let textNode = null;
+  let offset = 0;
+  let current;
+
+  while ((current = walker.nextNode())) {
+    const length = current.textContent.length;
+
+    if (
+      result.start >= offset &&
+      result.end <= offset + length
+    ) {
+      textNode = current;
+      break;
     }
+
+    offset += length;
   }
 
-  nodes.forEach(node => {
-    const original = node.nodeValue;
-    const lower = original.toLocaleLowerCase("tr-TR");
+  if (!textNode) return;
 
-    let position = 0;
-    let found = -1;
-    const fragment = document.createDocumentFragment();
+  const range = document.createRange();
 
-    while ((found = lower.indexOf(needle, position)) !== -1) {
-      // Eşleşmeden önceki metin
-      if (found > position) {
-        fragment.appendChild(
-          document.createTextNode(original.slice(position, found))
-        );
-      }
+  range.setStart(textNode, result.start - offset);
+  range.setEnd(textNode, result.end - offset);
 
-      // Bulunan kelime
-      const mark = document.createElement("mark");
-      mark.className = "search-hit";
-      mark.textContent = original.slice(found, found + needle.length);
-      fragment.appendChild(mark);
+  // Eşleşmenin ekrandaki koordinatlarını al
+  const rects = range.getClientRects();
+  const boxRect = pageBox.getBoundingClientRect();
 
-      position = found + needle.length;
-    }
+  for (const rect of rects) {
+    const mark = document.createElement("div");
+    mark.className = "search-hit";
 
-    if (position > 0) {
-      if (position < original.length) {
-        fragment.appendChild(
-          document.createTextNode(original.slice(position))
-        );
-      }
-      node.replaceWith(fragment);
-    }
-  });
+    mark.style.left = (rect.left - boxRect.left) + "px";
+    mark.style.top = (rect.top - boxRect.top) + "px";
+    mark.style.width = rect.width + "px";
+    mark.style.height = rect.height + "px";
+
+    highlightLayer.appendChild(mark);
+  }
 }
+
+
+// Arama sayacını güncelle
+function updateSearchCount() {
+  $("searchCount").textContent =
+    searchResults.length
+      ? `${searchIndex + 1} / ${searchResults.length}`
+      : "0 / 0";
+
+  $("searchPrev").disabled = searchResults.length === 0;
+  $("searchNext").disabled = searchResults.length === 0;
+}
+
 
 // Arama kutusu
 $("searchInput").addEventListener("input", async () => {
@@ -961,69 +1011,64 @@ $("searchInput").addEventListener("input", async () => {
   searchResults = [];
   searchIndex = -1;
 
-  $("searchCount").textContent = "0 / 0";
-  $("searchPrev").disabled = true;
-  $("searchNext").disabled = true;
+  updateSearchCount();
 
   if (!query || !S.doc) {
-    applySearchHighlight("");
+    applySearchHighlight("", null);
     return;
   }
 
   try {
     const results = await searchPdf(query);
 
-    // Eski aramanın yeni sonucu ezmesini engelle
+    // Daha yeni bir arama başladıysa eski sonucu kullanma
     if (token !== searchToken) return;
 
     searchResults = results;
 
-    if (searchResults.length === 0) {
-      $("searchCount").textContent = "0 / 0";
-      applySearchHighlight("");
+    if (!searchResults.length) {
+      updateSearchCount();
+      applySearchHighlight("", null);
       return;
     }
 
     searchIndex = 0;
+    updateSearchCount();
 
-    $("searchCount").textContent =
-      (searchIndex + 1) + " / " + searchResults.length;
-
-    $("searchPrev").disabled = false;
-    $("searchNext").disabled = false;
-
-    await showPage(searchResults[searchIndex].page);
+    await showPage(searchResults[0].page);
 
   } catch (err) {
     toast("Arama sırasında hata oluştu: " + err.message, true);
   }
 });
 
-// Önceki arama sonucu
+
+// Önceki eşleşme
 $("searchPrev").onclick = async () => {
   if (!searchResults.length) return;
 
   searchIndex =
-    (searchIndex - 1 + searchResults.length) % searchResults.length;
+    (searchIndex - 1 + searchResults.length) %
+    searchResults.length;
 
-  $("searchCount").textContent =
-    (searchIndex + 1) + " / " + searchResults.length;
+  updateSearchCount();
 
   await showPage(searchResults[searchIndex].page);
 };
 
-// Sonraki arama sonucu
+
+// Sonraki eşleşme
 $("searchNext").onclick = async () => {
   if (!searchResults.length) return;
 
   searchIndex =
     (searchIndex + 1) % searchResults.length;
 
-  $("searchCount").textContent =
-    (searchIndex + 1) + " / " + searchResults.length;
+  updateSearchCount();
 
   await showPage(searchResults[searchIndex].page);
 };
+
 
 </script>
 </body>
