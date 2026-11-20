@@ -1043,48 +1043,7 @@ function applySearchHighlight(query) {
 }
 
 
-  const nodes = [];
-  while (walker.nextNode()) {
-    if (walker.currentNode.nodeValue.trim()) {
-      nodes.push(walker.currentNode);
-    }
-  }
 
-  nodes.forEach(node => {
-    const original = node.nodeValue;
-    const lower = original.toLocaleLowerCase("tr-TR");
-
-    let position = 0;
-    let found = -1;
-    const fragment = document.createDocumentFragment();
-
-    while ((found = lower.indexOf(needle, position)) !== -1) {
-      // Eşleşmeden önceki metin
-      if (found > position) {
-        fragment.appendChild(
-          document.createTextNode(original.slice(position, found))
-        );
-      }
-
-      // Bulunan kelime
-      const mark = document.createElement("mark");
-      mark.className = "search-hit";
-      mark.textContent = original.slice(found, found + needle.length);
-      fragment.appendChild(mark);
-
-      position = found + needle.length;
-    }
-
-    if (position > 0) {
-      if (position < original.length) {
-        fragment.appendChild(
-          document.createTextNode(original.slice(position))
-        );
-      }
-      node.replaceWith(fragment);
-    }
-  });
-}
 
 // Arama kutusu
 $("searchInput").addEventListener("input", async () => {
