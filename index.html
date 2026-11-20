@@ -827,7 +827,31 @@
     }
     btn.disabled = false; btn.textContent = "İndir";
   };
- 
+// PDF içinde metin arama
+async function searchPdf(query) {
+  if (!S.doc || !query.trim()) return [];
+
+  const results = [];
+  const needle = query.trim().toLocaleLowerCase("tr-TR");
+
+  for (let i = 1; i <= S.doc.numPages; i++) {
+    const page = await S.doc.getPage(i);
+    const textContent = await page.getTextContent();
+
+    const pageText = textContent.items
+      .map(item => item.str)
+      .join(" ");
+
+    if (pageText.toLocaleLowerCase("tr-TR").includes(needle)) {
+      results.push({
+        page: i,
+        text: pageText
+      });
+    }
+  }
+
+  return results;
+}
 </script>
 </body>
 </html>
