@@ -63,17 +63,26 @@ function isSafeJpeg(info) {
 }
 
 function isPdf(bytes) {
-  return (
-    bytes instanceof Uint8Array &&
-    bytes.length > 5 &&
-    bytes[0] === 0x25 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x44 &&
-    bytes[3] === 0x46 &&
-    bytes[4] === 0x2D
-  );
-}
+  if (!(bytes instanceof Uint8Array) || bytes.length < 5) {
+    return false;
+  }
 
+  const limit = Math.min(bytes.length - 4, 1024);
+
+  for (let i = 0; i < limit; i++) {
+    if (
+      bytes[i] === 0x25 &&
+      bytes[i + 1] === 0x50 &&
+      bytes[i + 2] === 0x44 &&
+      bytes[i + 3] === 0x46 &&
+      bytes[i + 4] === 0x2D
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 export async function getImageEngine() {
   if (!imageEnginePromise) {
     imageEnginePromise = import(
