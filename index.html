@@ -852,6 +852,78 @@ async function searchPdf(query) {
 
   return results;
 }
+  
+// Arama sonuçlarının durumu
+let searchResults = [];
+let searchIndex = -1;
+let searchToken = 0;
+
+// Arama kutusuna yazıldığında
+$("searchInput").addEventListener("input", async () => {
+  const query = $("searchInput").value.trim();
+  const token = ++searchToken;
+
+  searchResults = [];
+  searchIndex = -1;
+
+  $("searchCount").textContent = "0 / 0";
+  $("searchPrev").disabled = true;
+  $("searchNext").disabled = true;
+
+  if (!query || !S.doc) return;
+
+  try {
+    const results = await searchPdf(query);
+
+    // Eski bir arama işleminin yeni sonucu ezmesini önle
+    if (token !== searchToken) return;
+
+    searchResults = results;
+
+    if (searchResults.length === 0) {
+      $("searchCount").textContent = "0 / 0";
+      return;
+    }
+
+    searchIndex = 0;
+    $("searchCount").textContent =
+      (searchIndex + 1) + " / " + searchResults.length;
+
+    $("searchPrev").disabled = false;
+    $("searchNext").disabled = false;
+
+    await showPage(searchResults[searchIndex].page);
+
+  } catch (err) {
+    toast("Arama sırasında hata oluştu: " + err.message, true);
+  }
+});
+
+// Önceki sonuç
+$("searchPrev").onclick = async () => {
+  if (searchResults.length === 0) return;
+
+  searchIndex =
+    (searchIndex - 1 + searchResults.length) % searchResults.length;
+
+  $("searchCount").textContent =
+    (searchIndex + 1) + " / " + searchResults.length;
+
+  await showPage(searchResults[searchIndex].page);
+};
+
+// Sonraki sonuç
+$("searchNext").onclick = async () => {
+  if (searchResults.length === 0) return;
+
+  searchIndex = (searchIndex + 1) % searchResults.length;
+
+  $("searchCount").textContent =
+    (searchIndex + 1) + " / " + searchResults.length;
+
+  await showPage(searchResults[searchIndex].page);
+};
+
 </script>
 </body>
 </html>
