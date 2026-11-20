@@ -162,8 +162,8 @@
 
 .search-hit {
   position: absolute;
-  background: rgba(148, 163, 184, 0.35);
-  border: 1px solid rgba(100, 116, 139, 0.35);
+  background: rgba(255, 220, 40, 0.45);
+  border: 1px solid rgba(230, 170, 0, 0.35);
   border-radius: 2px;
   pointer-events: none;
 }
@@ -443,24 +443,37 @@
   };
 
   /* ---------- Metin katmanı ve otomatik vurgu ---------- */
-  async function buildTextLayer(page, cv) {
-    const box = $("pageBox");
-    box.querySelectorAll(".textLayer").forEach((n) => n.remove());
-    const tl = document.createElement("div");
-    tl.className = "textLayer";
-    tl.style.width = cv.style.width; tl.style.height = cv.style.height;
-    tl.style.setProperty("--scale-factor", S.scale);
-    box.insertBefore(tl, overlay);
-    const vp = page.getViewport({ scale: S.scale });
-    try {
-      await pdfjsLib.renderTextLayer({ textContentSource: page.streamTextContent(), container: tl, viewport: vp }).promise;
-    } catch (e) {
-      try {
-        tl.innerHTML = "";
-        await pdfjsLib.renderTextLayer({ textContent: await page.getTextContent(), container: tl, viewport: vp }).promise;
-      } catch (e2) { /* metin yoksa (taranmış PDF) sürükleyerek kutu vurgusu yapılır */ }
-    }
+async function buildTextLayer(page, cv) {
+  const box = $("pageBox");
+  box.querySelectorAll(".textLayer").forEach((n) => n.remove());
+
+  const tl = document.createElement("div");
+  tl.className = "textLayer";
+  tl.style.width = cv.style.width;
+  tl.style.height = cv.style.height;
+  tl.style.setProperty("--scale-factor", S.scale);
+
+  box.insertBefore(tl, overlay);
+
+  const vp = page.getViewport({ scale: S.scale });
+
+  try {
+    // Arama ile aynı metin kaynağını kullan
+    const textContent = await page.getTextContent();
+
+    // Arama sonuçlarında kullanmak üzere sakla
+    tl._textItems = textContent.items;
+
+    await pdfjsLib.renderTextLayer({
+      textContent: textContent,
+      container: tl,
+      viewport: vp
+    }).promise;
+
+  } catch (e) {
+    tl.innerHTML = "";
   }
+}
 
   /* Seçili metnin satır satır kutularını PDF birimine (pt) çevirir */
   function selectionRects() {
@@ -916,13 +929,13 @@ let activeSearchQuery = "";
 
 
 // Yalnızca aktif eşleşmeyi vurgula
+// Yalnızca aktif arama sonucunu doğru metin üzerinde vurgula
 function applySearchHighlight(query, result) {
   const pageBox = $("pageBox");
   const textLayer = pageBox.querySelector(".textLayer");
 
   if (!textLayer) return;
 
-  // Eski görsel vurguları temizle
   let highlightLayer = pageBox.querySelector("#searchHighlights");
 
   if (!highlightLayer) {
@@ -935,15 +948,28 @@ function applySearchHighlight(query, result) {
 
   if (!query || !result || result.page !== S.page) return;
 
-  // PDF.js metin katmanındaki metin öğeleri
+  const items = textLayer._textItems || [];
   const spans = textLayer.querySelectorAll("span");
-  const span = spans[result.itemIndex];
 
-  if (!span) return;
+  // PDF metin öğesinin karşılık geldiği span'i bul
+  let spanIndex = 0;
+  let targetSpan = null;
 
-  // İlgili metin öğesinin içindeki tam eşleşmeyi seç
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].str) continue;
+
+    if (i === result.itemIndex) {
+      targetSpan = spans[spanIndex];
+      break;
+    }
+
+    spanIndex++;
+  }
+
+  if (!targetSpan) return;
+
   const walker = document.createTreeWalker(
-    span,
+    targetSpan,
     NodeFilter.SHOW_TEXT
   );
 
@@ -972,11 +998,12 @@ function applySearchHighlight(query, result) {
   range.setStart(textNode, result.start - offset);
   range.setEnd(textNode, result.end - offset);
 
-  // Eşleşmenin ekrandaki koordinatlarını al
   const rects = range.getClientRects();
   const boxRect = pageBox.getBoundingClientRect();
 
   for (const rect of rects) {
+    if (rect.width <= 0 || rect.height <= 0) continue;
+
     const mark = document.createElement("div");
     mark.className = "search-hit";
 
