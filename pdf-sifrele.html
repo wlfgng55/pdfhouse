@@ -9,7 +9,25 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js"></script>
+<script id="encLibScript" src="https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+  window.__encLibReady = new Promise((resolve) => {
+    const hasLib = () => Boolean(window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined");
+    if (hasLib()) {
+      resolve(true);
+      return;
+    }
+    const s = document.getElementById("encLibScript");
+    s.addEventListener("load", () => resolve(hasLib()), { once: true });
+    s.addEventListener("error", () => {
+      const fb = document.createElement("script");
+      fb.src = "https://unpkg.com/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js";
+      fb.onload = () => resolve(hasLib());
+      fb.onerror = () => resolve(false);
+      document.head.appendChild(fb);
+    }, { once: true });
+  });
+</script>
 <style>
   :root {
     --bg: #e4e8f0; --panel: #ffffff; --ink: #141a2e; --muted: #667085; --line: #d5d9e3;
@@ -190,9 +208,10 @@
     toast._t = setTimeout(() => { t.hidden = true; }, 3400);
   }
 
-  function getPdfLib() {
+  async function ensurePdfLib() {
     if (window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined") return window.PDFLib;
-    return null;
+    if (window.__encLibReady) await window.__encLibReady;
+    return (window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined") ? window.PDFLib : null;
   }
 
   $("openBtn").onclick = () => $("fileInput").click();
@@ -227,7 +246,7 @@
       toast("Lütfen geçerli bir PDF dosyası seç.", true);
       return;
     }
-    const lib = getPdfLib();
+    const lib = await ensurePdfLib();
     if (!lib) {
       toast("Şifreleme kütüphanesi yüklenemedi. İnternet bağlantını kontrol et.", true);
       return;
@@ -251,7 +270,7 @@
 
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
-    const lib = getPdfLib();
+    const lib = await ensurePdfLib();
     if (!lib) {
       toast("Şifreleme kütüphanesi bulunamadı.", true);
       return;
@@ -272,7 +291,7 @@
     try {
       const doc = await lib.PDFDocument.load(state.bytes);
       if (typeof doc.encrypt !== "function") {
-        throw new Error("Bu tarayıcıda şifreleme metodu desteklenmiyor.");
+        throw new Error("Bu sürümde şifreleme metodu desteklenmiyor.");
       }
 
       doc.encrypt({
