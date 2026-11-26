@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sayfa Sil / Sırala – PDF Stüdyo</title>
+<meta name="description" content="PDF sayfalarını yeniden sırala veya istemediğin sayfaları kaldır. Her şey tarayıcında yapılır.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root {
+    --bg: #e4e8f0; --panel: #ffffff; --ink: #141a2e; --muted: #667085; --line: #d5d9e3;
+    --accent: #5b3df5; --accent-ink: #ffffff; --danger: #d92d20;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1020; --panel: #171b30; --ink: #eef0fb; --muted: #98a0bd; --line: #2a3050;
+      --accent: #9b8cff; --accent-ink: #0d1020; --danger: #ff8f84;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; flex-direction: column; min-height: 100%;
+  }
+  button { font: inherit; color: inherit; }
+  button:focus-visible, .drop:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .logo { font-weight: 800; letter-spacing: -.02em; margin-right: 4px; text-decoration: none; color: inherit; }
+  .logo b { color: var(--accent); }
+  .btn, .go {
+    border: 1.5px solid var(--line); background: transparent; border-radius: 9px;
+    padding: 7px 13px; cursor: pointer; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--ink); }
+  .go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
+  .go:disabled, .btn:disabled { opacity: .42; cursor: default; }
+  .sp { flex: 1; }
+  .meta { color: var(--muted); font-size: .9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .wrap {
+    flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; padding: 24px 20px 48px;
+    position: relative;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: var(--panel); border: 1.5px solid var(--line); border-radius: 14px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+    user-select: none;
+  }
+  .card.dragging { opacity: .45; transform: scale(.98); }
+  .card.over { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .thumb-box {
+    background: var(--bg); border-radius: 8px; padding: 8px;
+    display: grid; place-items: center; min-height: 210px; cursor: grab;
+  }
+  .thumb-box:active { cursor: grabbing; }
+  .thumb-box canvas {
+    max-width: 100%; max-height: 220px; height: auto; width: auto;
+    background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.18); border-radius: 2px;
+  }
+  .card-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .page-badge {
+    font-weight: 800; font-size: .9rem; font-variant-numeric: tabular-nums;
+  }
+  .orig-tag {
+    color: var(--muted); font-size: .78rem; font-weight: 600;
+  }
+  .card-act {
+    display: flex; gap: 6px; justify-content: space-between;
+  }
+  .icon-btn {
+    flex: 1; border: 1.5px solid var(--line); background: transparent; border-radius: 8px;
+    padding: 6px 0; cursor: pointer; font-weight: 700; font-size: .85rem;
+  }
+  .icon-btn:hover:not(:disabled) { border-color: var(--ink); background: var(--bg); }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  .del-btn {
+    border: 0; background: var(--danger); color: #fff; border-radius: 8px;
+    padding: 6px 10px; cursor: pointer; font-weight: 700; font-size: .82rem;
+  }
+  .del-btn:hover:not(:disabled) { filter: brightness(.92); }
+  .del-btn:disabled { opacity: .35; cursor: default; }
+
+  #empty {
+    max-width: 560px; margin: 40px auto;
+  }
+  #empty h1 {
+    font-size: clamp(1.9rem, 5vw, 2.8rem); line-height: 1.06; letter-spacing: -.03em;
+    font-weight: 800; margin: 0 0 10px;
+  }
+  #empty p { color: var(--muted); margin: 0 0 22px; font-size: 1.02rem; }
+  .drop {
+    display: block; border: 2px dashed var(--muted); border-radius: 16px; padding: 42px 20px;
+    text-align: center; cursor: pointer; background: var(--panel); transition: border-color .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop strong { display: block; font-size: 1.12rem; margin-bottom: 4px; }
+  .drop small { color: var(--muted); }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 10px;
+    font-weight: 600; z-index: 30; max-width: 90vw;
+  }
+  #toast.err { background: var(--danger); color: #fff; }
+  .toast-btn {
+    margin-left: 10px; background: none; border: 1.5px solid currentColor;
+    color: inherit; border-radius: 7px; padding: 2px 9px; cursor: pointer; font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="btn" href="index.html">← Ana pencere</a>
+  <a class="logo" href="sayfa-sirala.html">PDF<b>Stüdyo</b> · Sayfa Sil / Sırala</a>
+  <button class="btn" id="openBtn">PDF Aç</button>
+  <button class="btn" id="undoBtn" disabled>Geri al</button>
+  <button class="btn" id="resetBtn" disabled>Sıfırla</button>
+  <span class="sp"></span>
+  <span class="meta" id="countInfo">–</span>
+  <button class="go" id="saveBtn" disabled>İndir</button>
+</header>
+
+<main class="wrap">
+  <div id="empty">
+    <h1>Sayfaları sil veya sırasını değiştir.</h1>
+    <p>Kartları sürükleyip bırakabilir veya ok butonlarıyla taşıyabilirsin. Dosyan tarayıcıdan çıkmaz.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="fileInput" accept="application/pdf,.pdf">
+      <strong>PDF dosyasını buraya bırak</strong>
+      <small>ya da tıklayıp bilgisayarından seç</small>
+    </label>
+  </div>
+
+  <div class="grid" id="grid" hidden></div>
+</main>
+
+<div id="toast" hidden></div>
+
+<script>
+  if (typeof pdfjsLib === "undefined" || typeof PDFLib === "undefined") {
+    document.querySelector(".wrap").innerHTML =
+      "<h2>Gerekli dosyalar yüklenemedi</h2><p>İnternet bağlantını kontrol et.</p>";
+    throw new Error("Kütüphaneler yüklenemedi");
+  }
+
+  const { PDFDocument } = PDFLib;
+  const $ = (id) => document.getElementById(id);
+
+  const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  const workerReady = fetch(PDFJS + "pdf.worker.min.js")
+    .then((r) => r.text())
+    .then((t) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], { type: "text/javascript" }));
+    })
+    .catch(() => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + "pdf.worker.min.js";
+    });
+
+  const state = {
+    bytes: null,
+    doc: null,
+    name: "belge",
+    order: [],       // Orijinal 1-tabanlı sayfa numaralarının güncel sırası, örn: [3, 1, 2]
+    history: []      // Geri al için önceki order dizileri
+  };
+
+  let dragSrcIndex = null;
+
+  function toast(msg, isErr = false, undoFn = null) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = isErr ? "err" : "";
+    t.hidden = false;
+    if (undoFn) {
+      const btn = document.createElement("button");
+      btn.className = "toast-btn";
+      btn.textContent = "Geri al";
+      btn.onclick = () => {
+        t.hidden = true;
+        undoFn();
+      };
+      t.appendChild(btn);
+    }
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.hidden = true; }, undoFn ? 6500 : 3000);
+  }
+
+  function pushHistory() {
+    state.history.push([...state.order]);
+    if (state.history.length > 30) state.history.shift();
+    $("undoBtn").disabled = state.history.length === 0;
+  }
+
+  $("undoBtn").onclick = () => {
+    if (!state.history.length) return;
+    state.order = state.history.pop();
+    $("undoBtn").disabled = state.history.length === 0;
+    renderGrid();
+    toast("Son değişiklik geri alındı.");
+  };
+
+  $("resetBtn").onclick = () => {
+    if (!state.doc) return;
+    pushHistory();
+    state.order = Array.from({ length: state.doc.numPages }, (_, i) => i + 1);
+    renderGrid();
+    toast("Orijinal sayfa sırasına dönüldü.");
+  };
+
+  $("openBtn").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (f) loadPdf(f);
+  };
+
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); })
+  );
+  drop.addEventListener("drop", (e) => {
+    const f = e.dataTransfer.files[0];
+    if (f) loadPdf(f);
+  });
+
+  async function loadPdf(file) {
+    if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+      toast("Lütfen geçerli bir PDF dosyası seç.", true);
+      return;
+    }
+    try {
+      await workerReady;
+      const bytes = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+      state.bytes = bytes;
+      state.doc = doc;
+      state.name = file.name.replace(/\.pdf$/i, "") || "belge";
+      state.order = Array.from({ length: doc.numPages }, (_, i) => i + 1);
+      state.history = [];
+
+      $("empty").hidden = true;
+      $("grid").hidden = false;
+      $("saveBtn").disabled = false;
+      $("resetBtn").disabled = false;
+      $("undoBtn").disabled = true;
+
+      await renderGrid();
+    } catch (err) {
+      toast("PDF açılamadı. Dosya şifreli veya bozuk olabilir.", true);
+    }
+  }
+
+  function movePage(fromIdx, toIdx) {
+    if (toIdx < 0 || toIdx >= state.order.length || fromIdx === toIdx) return;
+    pushHistory();
+    const [item] = state.order.splice(fromIdx, 1);
+    state.order.splice(toIdx, 0, item);
+    renderGrid();
+  }
+
+  function removePageAt(idx) {
+    if (state.order.length <= 1) {
+      toast("En az bir sayfa kalmalıdır; son sayfa silinemez.", true);
+      return;
+    }
+    pushHistory();
+    const removedOrigNo = state.order[idx];
+    state.order.splice(idx, 1);
+    renderGrid();
+    toast(`Sayfa ${idx + 1} (asıl s.${removedOrigNo}) kaldırıldı.`, false, () => {
+      if (state.history.length) {
+        state.order = state.history.pop();
+        $("undoBtn").disabled = state.history.length === 0;
+        renderGrid();
+      }
+    });
+  }
+
+  async function renderGrid() {
+    const grid = $("grid");
+    grid.innerHTML = "";
+    $("countInfo").textContent = `${state.order.length} sayfa`;
+
+    const cards = [];
+
+    state.order.forEach((origPageNo, idx) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.draggable = true;
+
+      const top = document.createElement("div");
+      top.className = "card-top";
+      top.innerHTML = `<span class="page-badge">${idx + 1}. Sayfa</span><span class="orig-tag">Asıl: ${origPageNo}</span>`;
+
+      const thumbBox = document.createElement("div");
+      thumbBox.className = "thumb-box";
+      const cv = document.createElement("canvas");
+      thumbBox.appendChild(cv);
+
+      const act = document.createElement("div");
+      act.className = "card-act";
+
+      const upBtn = document.createElement("button");
+      upBtn.type = "button";
+      upBtn.className = "icon-btn";
+      upBtn.textContent = "←";
+      upBtn.title = "Önceki sıraya taşı";
+      upBtn.disabled = idx === 0;
+      upBtn.onclick = () => movePage(idx, idx - 1);
+
+      const downBtn = document.createElement("button");
+      downBtn.type = "button";
+      downBtn.className = "icon-btn";
+      downBtn.textContent = "→";
+      downBtn.title = "Sonraki sıraya taşı";
+      downBtn.disabled = idx === state.order.length - 1;
+      downBtn.onclick = () => movePage(idx, idx + 1);
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "del-btn";
+      delBtn.textContent = "Sil";
+      delBtn.title = "Bu sayfayı kaldır";
+      delBtn.disabled = state.order.length <= 1;
+      delBtn.onclick = () => removePageAt(idx);
+
+      act.append(upBtn, downBtn, delBtn);
+      card.append(top, thumbBox, act);
+
+      card.addEventListener("dragstart", (e) => {
+        dragSrcIndex = idx;
+        card.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+
+      card.addEventListener("dragend", () => {
+        dragSrcIndex = null;
+        grid.querySelectorAll(".card").forEach((c) => c.classList.remove("dragging", "over"));
+      });
+
+      card.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (dragSrcIndex !== null && dragSrcIndex !== idx) {
+          card.classList.add("over");
+        }
+      });
+
+      card.addEventListener("dragleave", () => {
+        card.classList.remove("over");
+      });
+
+      card.addEventListener("drop", (e) => {
+        e.preventDefault();
+        card.classList.remove("over");
+        if (dragSrcIndex !== null && dragSrcIndex !== idx) {
+          movePage(dragSrcIndex, idx);
+        }
+      });
+
+      grid.appendChild(card);
+      cards.push({ origPageNo, cv });
+    });
+
+    const doc = state.doc;
+    for (const item of cards) {
+      if (doc !== state.doc) return;
+      const page = await doc.getPage(item.origPageNo);
+      const baseVp = page.getViewport({ scale: 1 });
+      const scale = 170 / baseVp.width;
+      const vp = page.getViewport({ scale });
+      const dpr = window.devicePixelRatio || 1;
+      item.cv.width = Math.floor(vp.width * dpr);
+      item.cv.height = Math.floor(vp.height * dpr);
+      await page.render({
+        canvasContext: item.cv.getContext("2d"),
+        viewport: page.getViewport({ scale: scale * dpr })
+      }).promise;
+    }
+  }
+
+  $("saveBtn").onclick = async () => {
+    if (!state.bytes || !state.order.length) return;
+    const btn = $("saveBtn");
+    btn.disabled = true;
+    btn.textContent = "Hazırlanıyor…";
+
+    try {
+      const srcDoc = await PDFDocument.load(state.bytes);
+      const outDoc = await PDFDocument.create();
+      const zeroBasedIndices = state.order.map((p) => p - 1);
+      const copiedPages = await outDoc.copyPages(srcDoc, zeroBasedIndices);
+      copiedPages.forEach((p) => outDoc.addPage(p));
+
+      const outBytes = await outDoc.save();
+      const url = URL.createObjectURL(new Blob([outBytes], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${state.name}-sirali.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast("Yeni PDF hazır, indirme başladı.");
+    } catch (err) {
+      toast("PDF kaydedilemedi: " + (err.message || "hata"), true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "İndir";
+    }
+  };
+</script>
+</body>
+</html>
