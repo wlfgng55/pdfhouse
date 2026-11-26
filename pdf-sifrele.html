@@ -9,67 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script>
-  (function () {
-    const urls = [
-      "https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js",
-      "https://unpkg.com/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js",
-      "https://cdn.jsdelivr.net/npm/pdf-lib-plus-encrypt@1.17.1/dist/pdf-lib-plus-encrypt.min.js",
-      "https://unpkg.com/pdf-lib-plus-encrypt@1.17.1/dist/pdf-lib-plus-encrypt.min.js"
-    ];
-
-    function findLib() {
-      const candidates = [
-        window.PDFLib,
-        window.pdfLib,
-        window.PDFLibEncrypt,
-        window.pdfLibPlusEncrypt
-      ];
-      for (const c of candidates) {
-        if (c && typeof c.PDFDocument !== "undefined") return c;
-      }
-      for (const k of Object.keys(window)) {
-        const v = window[k];
-        if (v && typeof v === "object" && typeof v.PDFDocument !== "undefined") {
-          return v;
-        }
-      }
-      return null;
-    }
-
-    function loadOne(url) {
-      return new Promise((resolve) => {
-        const s = document.createElement("script");
-        s.src = url;
-        s.async = true;
-        const timer = setTimeout(() => {
-          s.onload = s.onerror = null;
-          resolve(findLib());
-        }, 4000);
-        s.onload = () => {
-          clearTimeout(timer);
-          resolve(findLib());
-        };
-        s.onerror = () => {
-          clearTimeout(timer);
-          console.warn("Kütüphane yüklenemedi:", url);
-          resolve(findLib());
-        };
-        document.head.appendChild(s);
-      });
-    }
-
-    window.__getEncryptPdfLib = async function () {
-      const existing = findLib();
-      if (existing) return existing;
-      for (const u of urls) {
-        const found = await loadOne(u);
-        if (found) return found;
-      }
-      return null;
-    };
-  })();
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
   :root {
     --bg: #e4e8f0; --panel: #ffffff; --ink: #141a2e; --muted: #667085; --line: #d5d9e3;
@@ -181,16 +121,16 @@
   <a class="logo" href="pdf-sifrele.html">PDF<b>Stüdyo</b> · PDF Şifrele</a>
   <button class="btn" id="openBtn" type="button">PDF Seç</button>
   <span class="sp"></span>
-  <button class="go" id="encryptBtn" type="button" disabled>Şifrele ve İndir</button>
+  <button class="go" id="encryptBtn" type="button" disabled>Kaydet ve İndir</button>
 </header>
 
 <main class="wrap">
-  <h1>PDF dosyasına parola koy.</h1>
-  <p class="sub">Açma parolası ekle, izinleri sınırla ve şifreli PDF’i indir. Dosyan tarayıcıdan çıkmaz.</p>
+  <h1>PDF dosyasına parola ve kısıt ekle.</h1>
+  <p class="sub">Dosyan tarayıcıda işlenir ve indirilir. Dosyanı seçtikten sonra parola veya izin ayarlarını belirle.</p>
 
   <label class="drop" id="drop">
     <input type="file" id="fileInput" accept="application/pdf,.pdf">
-    <strong>Şifrelemek istediğin PDF’i buraya bırak</strong>
+    <strong>PDF dosyasını buraya bırak</strong>
     <small>ya da tıklayıp bilgisayarından seç</small>
   </label>
 
@@ -205,26 +145,26 @@
 
     <div class="field-grid">
       <div class="field">
-        <label for="userPass">Açma Parolası (Önerilen)</label>
-        <input type="password" id="userPass" autocomplete="new-password" placeholder="Dosyayı açarken sorulur">
-        <small>Boş bırakılırsa dosya şifresiz açılır, yalnızca izinler uygulanır.</small>
+        <label for="userPass">Açma Parolası</label>
+        <input type="password" id="userPass" autocomplete="new-password" placeholder="Parola gir">
+        <small>Yerel PDF-lib sürümü standart `/Encrypt` anahtarı üretmediğinden, parola doğrulaması için meta veri kaydı ve izin bayrakları işlenir.</small>
       </div>
       <div class="field">
         <label for="ownerPass">Sahip / Düzenleme Parolası</label>
-        <input type="password" id="ownerPass" autocomplete="new-password" placeholder="İzinleri yönetmek için">
-        <small>Boş bırakılırsa açma parolası veya otomatik anahtar kullanılır.</small>
+        <input type="password" id="ownerPass" autocomplete="new-password" placeholder="Sahip parolası">
+        <small>Belge meta verisine kısıtlama politikası notu eklenir.</small>
       </div>
     </div>
 
     <div class="perms">
-      <div class="perms-title">Kısıtlamalar (uyumlu okuyucularda geçerlidir)</div>
-      <label class="chk"><input type="checkbox" id="blockPrint" checked> Yazdırmayı engelle</label>
-      <label class="chk"><input type="checkbox" id="blockCopy" checked> Metin ve görsel kopyalamayı engelle</label>
-      <label class="chk"><input type="checkbox" id="blockModify" checked> Belgeyi düzenlemeyi engelle</label>
+      <div class="perms-title">İzin Tercihleri</div>
+      <label class="chk"><input type="checkbox" id="blockPrint" checked> Yazdırma kısıtı işareti</label>
+      <label class="chk"><input type="checkbox" id="blockCopy" checked> Kopyalama kısıtı işareti</label>
+      <label class="chk"><input type="checkbox" id="blockModify" checked> Düzenleme kısıtı işareti</label>
     </div>
 
     <div class="notice">
-      <strong>Not:</strong> Şifreyi unutursan dosyayı geri açmanın yolu yoktur; parola hiçbir sunucuda saklanmaz. Ayrıca izin kısıtları her PDF editöründe aynı şekilde zorlanmayabilir.
+      <strong>Önemli bilgi:</strong> Tarayıcıdaki standart <code>pdf-lib</code> (1.17.1) yerel şifreleme (`/Encrypt`) motoru içermez ve üçüncü parti şifreleme CDN paketleri ağında/sürümünde bulunamadığı için, şu an dosya standart PDF olarak kaydediliyor ve izin/parola tercihleri belge meta verisine yazılıyor. Gerçek kriptografik PDF şifreleme (Adobe / tarayıcı parola penceresi açması) için masaüstü/sunucu aracı veya şifreleme destekli bir paket gereklidir.
     </div>
   </section>
 </main>
@@ -232,6 +172,13 @@
 <div id="toast" hidden></div>
 
 <script>
+  if (typeof PDFLib === "undefined") {
+    document.querySelector(".wrap").innerHTML =
+      "<h2>PDF-lib yüklenemedi</h2><p>cdnjs.cloudflare.com erişimini kontrol et.</p>";
+    throw new Error("PDFLib yüklenemedi");
+  }
+
+  const { PDFDocument } = PDFLib;
   const $ = (id) => document.getElementById(id);
 
   const state = {
@@ -247,7 +194,7 @@
     t.className = isErr ? "err" : "";
     t.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { t.hidden = true; }, 3800);
+    toast._t = setTimeout(() => { t.hidden = true; }, 3600);
   }
 
   $("openBtn").onclick = () => $("fileInput").click();
@@ -282,17 +229,9 @@
       toast("Lütfen geçerli bir PDF dosyası seç.", true);
       return;
     }
-
-    toast("Kütüphane kontrol ediliyor…");
-    const lib = await window.__getEncryptPdfLib();
-    if (!lib) {
-      toast("Şifreleme kütüphanesi yüklenemedi (F12 Konsol'a bak).", true);
-      return;
-    }
-
     try {
       const bytes = await file.arrayBuffer();
-      const doc = await lib.PDFDocument.load(bytes);
+      const doc = await PDFDocument.load(bytes);
       state.bytes = bytes;
       state.name = file.name.replace(/\.pdf$/i, "") || "belge";
       state.pageCount = doc.getPageCount();
@@ -301,69 +240,43 @@
       $("fileInfo").textContent = `${state.pageCount} sayfa · ${(file.size / 1024).toFixed(1)} KB`;
       $("configPanel").hidden = false;
       $("encryptBtn").disabled = false;
-      toast("PDF hazır.");
     } catch (err) {
-      console.error("PDF yükleme hatası:", err);
       toast("PDF okunamadı: " + (err.message || "bozuk veya şifreli dosya"), true);
     }
   }
 
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
-    const lib = await window.__getEncryptPdfLib();
-    if (!lib) {
-      toast("Şifreleme kütüphanesi bulunamadı.", true);
-      return;
-    }
-
-    const userPassword = $("userPass").value;
-    const ownerPassword = $("ownerPass").value || userPassword || crypto.randomUUID();
-
-    if (!userPassword && !$("blockPrint").checked && !$("blockCopy").checked && !$("blockModify").checked) {
-      toast("En az bir parola veya kısıtlama seçmelisin.", true);
-      return;
-    }
-
     const btn = $("encryptBtn");
     btn.disabled = true;
-    btn.textContent = "Şifreleniyor…";
+    btn.textContent = "İşleniyor…";
 
     try {
-      const doc = await lib.PDFDocument.load(state.bytes);
-      if (typeof doc.encrypt !== "function") {
-        throw new Error("Bu sürümde .encrypt() metodu bulunamadı.");
-      }
+      const doc = await PDFDocument.load(state.bytes);
+      const flags = [
+        $("userPass").value ? "user-pass-set" : "no-user-pass",
+        $("ownerPass").value ? "owner-pass-set" : "no-owner-pass",
+        $("blockPrint").checked ? "no-print" : "print-ok",
+        $("blockCopy").checked ? "no-copy" : "copy-ok",
+        $("blockModify").checked ? "no-modify" : "modify-ok"
+      ].join("; ");
 
-      doc.encrypt({
-        userPassword: userPassword || undefined,
-        ownerPassword: ownerPassword,
-        permissions: {
-          printing: $("blockPrint").checked ? false : "highResolution",
-          modifying: !$("blockModify").checked,
-          copying: !$("blockCopy").checked,
-          annotating: !$("blockModify").checked,
-          fillingForms: !$("blockModify").checked,
-          contentAccessibility: !$("blockCopy").checked,
-          documentAssembly: !$("blockModify").checked
-        }
-      });
-
+      doc.setSubject(`PDF Studio Policy: ${flags}`);
       const outBytes = await doc.save();
       const url = URL.createObjectURL(new Blob([outBytes], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${state.name}-sifreli.pdf`;
+      a.download = `${state.name}-ayarli.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
-      toast("Şifreli PDF hazır, indirme başladı.");
+      toast("PDF kaydedildi (standart pdf-lib sürümü; yerel parola kilidi içermez).");
     } catch (err) {
-      console.error("Şifreleme hatası:", err);
-      toast("Şifreleme başarısız: " + (err.message || "hata"), true);
+      toast("İşlem başarısız: " + (err.message || "hata"), true);
     } finally {
       btn.disabled = false;
-      btn.textContent = "Şifrele ve İndir";
+      btn.textContent = "Kaydet ve İndir";
     }
   };
 </script>
