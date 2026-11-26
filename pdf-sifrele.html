@@ -55,7 +55,7 @@
   .sp { flex: 1; }
   .status-pill { font-size: .82rem; font-weight: 700; color: var(--muted); }
 
-  .wrap { flex: 1; max-width: 760px; width: 100%; margin: 0 auto; padding: 28px 20px 56px; }
+  .wrap { flex: 1; max-width: 720px; width: 100%; margin: 0 auto; padding: 28px 20px 56px; }
   h1 {
     font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.08; letter-spacing: -.03em;
     font-weight: 800; margin: 0 0 8px;
@@ -83,10 +83,7 @@
   .file-name { font-weight: 800; font-size: 1rem; word-break: break-word; }
   .file-meta { color: var(--muted); font-size: .85rem; }
 
-  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  @media (max-width: 600px) { .field-grid { grid-template-columns: 1fr; } }
-
-  .field label { display: block; font-size: .88rem; font-weight: 700; margin-bottom: 6px; }
+  .field label { display: block; font-size: .9rem; font-weight: 700; margin-bottom: 6px; }
   .field small { display: block; color: var(--muted); font-size: .78rem; margin-top: 4px; }
   .field input[type="password"], .field input[type="text"] {
     width: 100%; background: var(--bg); border: 1.5px solid var(--line);
@@ -127,7 +124,7 @@
 
 <main class="wrap">
   <h1>PDF dosyasına parola koy.</h1>
-  <p class="sub">QPDF WebAssembly ile 256-bit AES şifreleme uygula ve indir. Dosyan tarayıcıdan çıkmaz.</p>
+  <p class="sub">Tek parola ile 256-bit AES şifreleme uygula ve indir. Dosyan tarayıcıdan çıkmaz.</p>
 
   <label class="drop" id="drop">
     <input type="file" id="fileInput" accept="application/pdf,.pdf">
@@ -141,20 +138,13 @@
         <div class="file-name" id="fileName">–</div>
         <div class="file-meta" id="fileInfo">–</div>
       </div>
-      <button class="btn" id="toggleShowBtn" type="button">Parolaları Göster</button>
+      <button class="btn" id="toggleShowBtn" type="button">Parolayı Göster</button>
     </div>
 
-    <div class="field-grid">
-      <div class="field">
-        <label for="userPass">Açma Parolası (Kullanıcı Parolası)</label>
-        <input type="password" id="userPass" autocomplete="new-password" placeholder="Dosyayı açarken sorulur">
-        <small>Boş bırakılırsa dosya doğrudan açılır, izin kısıtları uygulanır.</small>
-      </div>
-      <div class="field">
-        <label for="ownerPass">Sahip / İzin Parolası</label>
-        <input type="password" id="ownerPass" autocomplete="new-password" placeholder="Kısıtları aşmak / yönetmek için">
-        <small>Boş bırakılırsa açma parolası veya rastgele anahtar atanır.</small>
-      </div>
+    <div class="field">
+      <label for="pdfPass">PDF Parolası</label>
+      <input type="password" id="pdfPass" autocomplete="new-password" placeholder="Dosyayı açmak için kullanılacak parola">
+      <small>Bu parola hem açma kilidi hem de izin anahtarı olarak ayarlanır. Not: bazı okuyucular/editörler izin bayraklarını tam olarak zorlamayabilir.</small>
     </div>
 
     <div class="perms">
@@ -165,7 +155,7 @@
     </div>
 
     <div class="notice">
-      <strong>Not:</strong> Şifreyi unutursan dosyayı geri açmanın yolu yoktur; parola hiçbir sunucuda saklanmaz. Tarayıcı ve PDF okuyucular açma parolası varsa şifre sorar; bazı üçüncü parti araçlar izin bayraklarını farklı yorumlayabilir.
+      <strong>Not:</strong> Parolayı unutursan dosyayı geri açmanın yolu yoktur; parola hiçbir sunucuda saklanmaz.
     </div>
   </section>
 </main>
@@ -179,7 +169,7 @@
   const state = {
     bytes: null,
     name: "belge",
-    showPasswords: false,
+    showPassword: false,
     qpdfFactory: null
   };
 
@@ -243,11 +233,9 @@
   });
 
   $("toggleShowBtn").onclick = () => {
-    state.showPasswords = !state.showPasswords;
-    const type = state.showPasswords ? "text" : "password";
-    $("userPass").type = type;
-    $("ownerPass").type = type;
-    $("toggleShowBtn").textContent = state.showPasswords ? "Parolaları Gizle" : "Parolaları Göster";
+    state.showPassword = !state.showPassword;
+    $("pdfPass").type = state.showPassword ? "text" : "password";
+    $("toggleShowBtn").textContent = state.showPassword ? "Parolayı Gizle" : "Parolayı Göster";
   };
 
   async function loadFile(file) {
@@ -266,7 +254,7 @@
       $("fileInfo").textContent = `${(file.size / 1024).toFixed(1)} KB`;
       $("configPanel").hidden = false;
       $("encryptBtn").disabled = false;
-      toast("PDF yüklendi, parola ve izinleri seçebilirsin.");
+      toast("PDF yüklendi, parola ve izinleri belirleyebilirsin.");
     } catch (err) {
       toast("QPDF WASM yüklenemedi. İnternet bağlantını kontrol et.", true);
     }
@@ -275,14 +263,14 @@
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
 
-    const userPass = $("userPass").value;
-    const ownerPass = $("ownerPass").value || userPass || crypto.randomUUID();
+    const pass = $("pdfPass").value;
     const noPrint = $("blockPrint").checked;
     const noCopy = $("blockCopy").checked;
     const noModify = $("blockModify").checked;
 
-    if (!userPass && !noPrint && !noCopy && !noModify) {
-      toast("En az bir parola veya kısıtlama seçmelisin.", true);
+    if (!pass) {
+      toast("Lütfen bir parola gir.", true);
+      $("pdfPass").focus();
       return;
     }
 
@@ -298,8 +286,8 @@
       const args = [
         "/in.pdf",
         "--encrypt",
-        userPass,
-        ownerPass,
+        pass,
+        pass,
         "256",
         `--print=${noPrint ? "none" : "full"}`,
         `--extract=${noCopy ? "n" : "y"}`,
