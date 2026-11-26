@@ -144,18 +144,18 @@
     <div class="field">
       <label for="pdfPass">PDF Parolası</label>
       <input type="password" id="pdfPass" autocomplete="new-password" placeholder="Dosyayı açmak için kullanılacak parola">
-      <small>Bu parola hem açma kilidi hem de izin anahtarı olarak ayarlanır. Not: bazı okuyucular/editörler izin bayraklarını tam olarak zorlamayabilir.</small>
+      <small>Dosyayı bu parola ile açtığında izin kısıtları uygulanır; tarayıcı görüntüleyicileri izin bayraklarını her zaman kısıtlamayabilir.</small>
     </div>
 
     <div class="perms">
-      <div class="perms-title">Kısıtlamalar (uyumlu okuyucularda geçerlidir)</div>
+      <div class="perms-title">Kısıtlama bayrakları (Adobe Acrobat gibi uyumlu okuyucularda geçerlidir)</div>
       <label class="chk"><input type="checkbox" id="blockPrint" checked> Yazdırmayı engelle</label>
       <label class="chk"><input type="checkbox" id="blockCopy" checked> Metin ve görsel kopyalamayı engelle</label>
       <label class="chk"><input type="checkbox" id="blockModify" checked> Belgeyi düzenlemeyi engelle</label>
     </div>
 
     <div class="notice">
-      <strong>Not:</strong> Parolayı unutursan dosyayı geri açmanın yolu yoktur; parola hiçbir sunucuda saklanmaz.
+      <strong>Not:</strong> Tarayıcıların dahili PDF görüntüleyicileri (Chrome, Edge vb.) çoğu zaman yazdırma, kopyalama veya düzenleme kısıtlarını fiilen engellemez; bu kısıtlar esas olarak standarda uyan masaüstü okuyucularda görünür. Parolayı unutursan dosyayı geri açmanın yolu yoktur.
     </div>
   </section>
 </main>
@@ -254,7 +254,7 @@
       $("fileInfo").textContent = `${(file.size / 1024).toFixed(1)} KB`;
       $("configPanel").hidden = false;
       $("encryptBtn").disabled = false;
-      toast("PDF yüklendi, parola ve izinleri belirleyebilirsin.");
+      toast("PDF yüklendi, parola ve kısıtlamaları belirleyebilirsin.");
     } catch (err) {
       toast("QPDF WASM yüklenemedi. İnternet bağlantını kontrol et.", true);
     }
@@ -263,12 +263,14 @@
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
 
-    const pass = $("pdfPass").value;
+    const userPass = $("pdfPass").value;
+    // Sahip parolasını farklı bir rastgele değer veriyoruz ki kullanıcı parolasıyla açıldığında yetkili mod açılmasın
+    const ownerPass = `own_${crypto.randomUUID()}`;
     const noPrint = $("blockPrint").checked;
     const noCopy = $("blockCopy").checked;
     const noModify = $("blockModify").checked;
 
-    if (!pass) {
+    if (!userPass) {
       toast("Lütfen bir parola gir.", true);
       $("pdfPass").focus();
       return;
@@ -286,8 +288,8 @@
       const args = [
         "/in.pdf",
         "--encrypt",
-        pass,
-        pass,
+        userPass,
+        ownerPass,
         "256",
         `--print=${noPrint ? "none" : "full"}`,
         `--extract=${noCopy ? "n" : "y"}`,
