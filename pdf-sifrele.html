@@ -4,12 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDF Şifrele – PDF Stüdyo</title>
-<meta name="description" content="PDF dosyasına parola koy ve izinleri ayarla. Her şey tarayıcında yapılır.">
+<meta name="description" content="QPDF WebAssembly ile PDF dosyasına parola koy ve izinleri ayarla. Her şey tarayıcında yapılır.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Crect width=%27100%27 height=%27100%27 rx=%2722%27 fill=%27%235b3df5%27/%3E%3Ctext x=%2750%27 y=%2768%27 font-size=%2760%27 text-anchor=%27middle%27 fill=%27white%27 font-family=%27Arial%27 font-weight=%27700%27%3EP%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
   :root {
     --bg: #e4e8f0; --panel: #ffffff; --ink: #141a2e; --muted: #667085; --line: #d5d9e3;
@@ -54,6 +53,7 @@
   .go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 800; }
   .go:disabled, .btn:disabled { opacity: .42; cursor: default; }
   .sp { flex: 1; }
+  .status-pill { font-size: .82rem; font-weight: 700; color: var(--muted); }
 
   .wrap { flex: 1; max-width: 760px; width: 100%; margin: 0 auto; padding: 28px 20px 56px; }
   h1 {
@@ -120,17 +120,18 @@
   <a class="btn" href="index.html">← Ana sayfa</a>
   <a class="logo" href="pdf-sifrele.html">PDF<b>Stüdyo</b> · PDF Şifrele</a>
   <button class="btn" id="openBtn" type="button">PDF Seç</button>
+  <span class="status-pill" id="wasmStatus">QPDF WASM hazır değil</span>
   <span class="sp"></span>
-  <button class="go" id="encryptBtn" type="button" disabled>Kaydet ve İndir</button>
+  <button class="go" id="encryptBtn" type="button" disabled>Şifrele ve İndir</button>
 </header>
 
 <main class="wrap">
-  <h1>PDF dosyasına parola ve kısıt ekle.</h1>
-  <p class="sub">Dosyan tarayıcıda işlenir ve indirilir. Dosyanı seçtikten sonra parola veya izin ayarlarını belirle.</p>
+  <h1>PDF dosyasına parola koy.</h1>
+  <p class="sub">QPDF WebAssembly ile 256-bit AES şifreleme uygula ve indir. Dosyan tarayıcıdan çıkmaz.</p>
 
   <label class="drop" id="drop">
     <input type="file" id="fileInput" accept="application/pdf,.pdf">
-    <strong>PDF dosyasını buraya bırak</strong>
+    <strong>Şifrelemek istediğin PDF’i buraya bırak</strong>
     <small>ya da tıklayıp bilgisayarından seç</small>
   </label>
 
@@ -145,47 +146,41 @@
 
     <div class="field-grid">
       <div class="field">
-        <label for="userPass">Açma Parolası</label>
-        <input type="password" id="userPass" autocomplete="new-password" placeholder="Parola gir">
-        <small>Yerel PDF-lib sürümü standart `/Encrypt` anahtarı üretmediğinden, parola doğrulaması için meta veri kaydı ve izin bayrakları işlenir.</small>
+        <label for="userPass">Açma Parolası (Kullanıcı Parolası)</label>
+        <input type="password" id="userPass" autocomplete="new-password" placeholder="Dosyayı açarken sorulur">
+        <small>Boş bırakılırsa dosya doğrudan açılır, izin kısıtları uygulanır.</small>
       </div>
       <div class="field">
-        <label for="ownerPass">Sahip / Düzenleme Parolası</label>
-        <input type="password" id="ownerPass" autocomplete="new-password" placeholder="Sahip parolası">
-        <small>Belge meta verisine kısıtlama politikası notu eklenir.</small>
+        <label for="ownerPass">Sahip / İzin Parolası</label>
+        <input type="password" id="ownerPass" autocomplete="new-password" placeholder="Kısıtları aşmak / yönetmek için">
+        <small>Boş bırakılırsa açma parolası veya rastgele anahtar atanır.</small>
       </div>
     </div>
 
     <div class="perms">
-      <div class="perms-title">İzin Tercihleri</div>
-      <label class="chk"><input type="checkbox" id="blockPrint" checked> Yazdırma kısıtı işareti</label>
-      <label class="chk"><input type="checkbox" id="blockCopy" checked> Kopyalama kısıtı işareti</label>
-      <label class="chk"><input type="checkbox" id="blockModify" checked> Düzenleme kısıtı işareti</label>
+      <div class="perms-title">Kısıtlamalar (uyumlu okuyucularda geçerlidir)</div>
+      <label class="chk"><input type="checkbox" id="blockPrint" checked> Yazdırmayı engelle</label>
+      <label class="chk"><input type="checkbox" id="blockCopy" checked> Metin ve görsel kopyalamayı engelle</label>
+      <label class="chk"><input type="checkbox" id="blockModify" checked> Belgeyi düzenlemeyi engelle</label>
     </div>
 
     <div class="notice">
-      <strong>Önemli bilgi:</strong> Tarayıcıdaki standart <code>pdf-lib</code> (1.17.1) yerel şifreleme (`/Encrypt`) motoru içermez ve üçüncü parti şifreleme CDN paketleri ağında/sürümünde bulunamadığı için, şu an dosya standart PDF olarak kaydediliyor ve izin/parola tercihleri belge meta verisine yazılıyor. Gerçek kriptografik PDF şifreleme (Adobe / tarayıcı parola penceresi açması) için masaüstü/sunucu aracı veya şifreleme destekli bir paket gereklidir.
+      <strong>Not:</strong> Şifreyi unutursan dosyayı geri açmanın yolu yoktur; parola hiçbir sunucuda saklanmaz. Tarayıcı ve PDF okuyucular açma parolası varsa şifre sorar; bazı üçüncü parti araçlar izin bayraklarını farklı yorumlayabilir.
     </div>
   </section>
 </main>
 
 <div id="toast" hidden></div>
 
-<script>
-  if (typeof PDFLib === "undefined") {
-    document.querySelector(".wrap").innerHTML =
-      "<h2>PDF-lib yüklenemedi</h2><p>cdnjs.cloudflare.com erişimini kontrol et.</p>";
-    throw new Error("PDFLib yüklenemedi");
-  }
-
-  const { PDFDocument } = PDFLib;
+<script type="module">
+  const QPDF_BASE = "https://cdn.jsdelivr.net/npm/@jspawn/qpdf-wasm@0.0.2/";
   const $ = (id) => document.getElementById(id);
 
   const state = {
     bytes: null,
     name: "belge",
-    pageCount: 0,
-    showPasswords: false
+    showPasswords: false,
+    qpdfFactory: null
   };
 
   function toast(msg, isErr = false) {
@@ -194,7 +189,38 @@
     t.className = isErr ? "err" : "";
     t.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { t.hidden = true; }, 3600);
+    toast._t = setTimeout(() => { t.hidden = true; }, 3800);
+  }
+
+  async function loadQpdfFactory() {
+    if (state.qpdfFactory) return state.qpdfFactory;
+    $("wasmStatus").textContent = "QPDF WASM yükleniyor…";
+
+    try {
+      const mod = await import(`${QPDF_BASE}qpdf.mjs`);
+      const factory = mod.default || mod.createModule || mod;
+      if (typeof factory !== "function") {
+        throw new Error("QPDF modül fabrikası bulunamadı.");
+      }
+      state.qpdfFactory = factory;
+      $("wasmStatus").textContent = "QPDF WASM hazır";
+      return factory;
+    } catch (err) {
+      console.error("QPDF WASM yükleme hatası:", err);
+      $("wasmStatus").textContent = "QPDF WASM yüklenemedi";
+      throw err;
+    }
+  }
+
+  async function createQpdfInstance() {
+    const factory = await loadQpdfFactory();
+    return await factory({
+      locateFile: (path) => {
+        if (path.endsWith(".wasm")) return `${QPDF_BASE}qpdf.wasm`;
+        return `${QPDF_BASE}${path}`;
+      },
+      noInitialRun: true
+    });
   }
 
   $("openBtn").onclick = () => $("fileInput").click();
@@ -229,54 +255,88 @@
       toast("Lütfen geçerli bir PDF dosyası seç.", true);
       return;
     }
+
     try {
-      const bytes = await file.arrayBuffer();
-      const doc = await PDFDocument.load(bytes);
-      state.bytes = bytes;
+      await loadQpdfFactory();
+      const buf = await file.arrayBuffer();
+      state.bytes = new Uint8Array(buf);
       state.name = file.name.replace(/\.pdf$/i, "") || "belge";
-      state.pageCount = doc.getPageCount();
 
       $("fileName").textContent = file.name;
-      $("fileInfo").textContent = `${state.pageCount} sayfa · ${(file.size / 1024).toFixed(1)} KB`;
+      $("fileInfo").textContent = `${(file.size / 1024).toFixed(1)} KB`;
       $("configPanel").hidden = false;
       $("encryptBtn").disabled = false;
+      toast("PDF yüklendi, parola ve izinleri seçebilirsin.");
     } catch (err) {
-      toast("PDF okunamadı: " + (err.message || "bozuk veya şifreli dosya"), true);
+      toast("QPDF WASM yüklenemedi. İnternet bağlantını kontrol et.", true);
     }
   }
 
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
+
+    const userPass = $("userPass").value;
+    const ownerPass = $("ownerPass").value || userPass || crypto.randomUUID();
+    const noPrint = $("blockPrint").checked;
+    const noCopy = $("blockCopy").checked;
+    const noModify = $("blockModify").checked;
+
+    if (!userPass && !noPrint && !noCopy && !noModify) {
+      toast("En az bir parola veya kısıtlama seçmelisin.", true);
+      return;
+    }
+
     const btn = $("encryptBtn");
     btn.disabled = true;
-    btn.textContent = "İşleniyor…";
+    btn.textContent = "Şifreleniyor…";
 
+    let qpdf = null;
     try {
-      const doc = await PDFDocument.load(state.bytes);
-      const flags = [
-        $("userPass").value ? "user-pass-set" : "no-user-pass",
-        $("ownerPass").value ? "owner-pass-set" : "no-owner-pass",
-        $("blockPrint").checked ? "no-print" : "print-ok",
-        $("blockCopy").checked ? "no-copy" : "copy-ok",
-        $("blockModify").checked ? "no-modify" : "modify-ok"
-      ].join("; ");
+      qpdf = await createQpdfInstance();
+      qpdf.FS.writeFile("/in.pdf", state.bytes);
 
-      doc.setSubject(`PDF Studio Policy: ${flags}`);
-      const outBytes = await doc.save();
+      const args = [
+        "/in.pdf",
+        "--encrypt",
+        userPass,
+        ownerPass,
+        "256",
+        `--print=${noPrint ? "none" : "full"}`,
+        `--extract=${noCopy ? "n" : "y"}`,
+        `--modify=${noModify ? "none" : "all"}`,
+        "--",
+        "/out.pdf"
+      ];
+
+      const exitCode = typeof qpdf.callMain === "function"
+        ? qpdf.callMain(args)
+        : 0;
+
+      if (exitCode && exitCode !== 0 && exitCode !== 3) {
+        throw new Error(`QPDF çıkış kodu: ${exitCode}`);
+      }
+
+      const outBytes = qpdf.FS.readFile("/out.pdf");
       const url = URL.createObjectURL(new Blob([outBytes], { type: "application/pdf" }));
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${state.name}-ayarli.pdf`;
+      a.download = `${state.name}-sifreli.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      toast("PDF kaydedildi (standart pdf-lib sürümü; yerel parola kilidi içermez).");
+      setTimeout(() => URL.revokeObjectURL(url), 2500);
+
+      toast("Şifreli PDF hazır, indirme başladı.");
     } catch (err) {
-      toast("İşlem başarısız: " + (err.message || "hata"), true);
+      console.error("Şifreleme hatası:", err);
+      toast("Şifreleme başarısız: " + (err.message || "hata"), true);
     } finally {
+      if (qpdf && qpdf.FS) {
+        try { qpdf.FS.unlink("/in.pdf"); } catch (_) {}
+        try { qpdf.FS.unlink("/out.pdf"); } catch (_) {}
+      }
       btn.disabled = false;
-      btn.textContent = "Kaydet ve İndir";
+      btn.textContent = "Şifrele ve İndir";
     }
   };
 </script>
