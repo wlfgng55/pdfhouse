@@ -9,24 +9,66 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script id="encLibScript" src="https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
-  window.__encLibReady = new Promise((resolve) => {
-    const hasLib = () => Boolean(window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined");
-    if (hasLib()) {
-      resolve(true);
-      return;
+  (function () {
+    const urls = [
+      "https://cdn.jsdelivr.net/npm/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js",
+      "https://unpkg.com/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js",
+      "https://cdn.jsdelivr.net/npm/pdf-lib-plus-encrypt@1.17.1/dist/pdf-lib-plus-encrypt.min.js",
+      "https://unpkg.com/pdf-lib-plus-encrypt@1.17.1/dist/pdf-lib-plus-encrypt.min.js"
+    ];
+
+    function findLib() {
+      const candidates = [
+        window.PDFLib,
+        window.pdfLib,
+        window.PDFLibEncrypt,
+        window.pdfLibPlusEncrypt
+      ];
+      for (const c of candidates) {
+        if (c && typeof c.PDFDocument !== "undefined") return c;
+      }
+      for (const k of Object.keys(window)) {
+        const v = window[k];
+        if (v && typeof v === "object" && typeof v.PDFDocument !== "undefined") {
+          return v;
+        }
+      }
+      return null;
     }
-    const s = document.getElementById("encLibScript");
-    s.addEventListener("load", () => resolve(hasLib()), { once: true });
-    s.addEventListener("error", () => {
-      const fb = document.createElement("script");
-      fb.src = "https://unpkg.com/@pdfsmaller/pdf-lib-encrypt@1.17.1/dist/pdf-lib.min.js";
-      fb.onload = () => resolve(hasLib());
-      fb.onerror = () => resolve(false);
-      document.head.appendChild(fb);
-    }, { once: true });
-  });
+
+    function loadOne(url) {
+      return new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = url;
+        s.async = true;
+        const timer = setTimeout(() => {
+          s.onload = s.onerror = null;
+          resolve(findLib());
+        }, 4000);
+        s.onload = () => {
+          clearTimeout(timer);
+          resolve(findLib());
+        };
+        s.onerror = () => {
+          clearTimeout(timer);
+          console.warn("Kütüphane yüklenemedi:", url);
+          resolve(findLib());
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    window.__getEncryptPdfLib = async function () {
+      const existing = findLib();
+      if (existing) return existing;
+      for (const u of urls) {
+        const found = await loadOne(u);
+        if (found) return found;
+      }
+      return null;
+    };
+  })();
 </script>
 <style>
   :root {
@@ -137,9 +179,9 @@
 <header class="bar">
   <a class="btn" href="index.html">← Ana sayfa</a>
   <a class="logo" href="pdf-sifrele.html">PDF<b>Stüdyo</b> · PDF Şifrele</a>
-  <button class="btn" id="openBtn">PDF Seç</button>
+  <button class="btn" id="openBtn" type="button">PDF Seç</button>
   <span class="sp"></span>
-  <button class="go" id="encryptBtn" disabled>Şifrele ve İndir</button>
+  <button class="go" id="encryptBtn" type="button" disabled>Şifrele ve İndir</button>
 </header>
 
 <main class="wrap">
@@ -205,13 +247,7 @@
     t.className = isErr ? "err" : "";
     t.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { t.hidden = true; }, 3400);
-  }
-
-  async function ensurePdfLib() {
-    if (window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined") return window.PDFLib;
-    if (window.__encLibReady) await window.__encLibReady;
-    return (window.PDFLib && typeof window.PDFLib.PDFDocument !== "undefined") ? window.PDFLib : null;
+    toast._t = setTimeout(() => { t.hidden = true; }, 3800);
   }
 
   $("openBtn").onclick = () => $("fileInput").click();
@@ -246,9 +282,11 @@
       toast("Lütfen geçerli bir PDF dosyası seç.", true);
       return;
     }
-    const lib = await ensurePdfLib();
+
+    toast("Kütüphane kontrol ediliyor…");
+    const lib = await window.__getEncryptPdfLib();
     if (!lib) {
-      toast("Şifreleme kütüphanesi yüklenemedi. İnternet bağlantını kontrol et.", true);
+      toast("Şifreleme kütüphanesi yüklenemedi (F12 Konsol'a bak).", true);
       return;
     }
 
@@ -263,14 +301,16 @@
       $("fileInfo").textContent = `${state.pageCount} sayfa · ${(file.size / 1024).toFixed(1)} KB`;
       $("configPanel").hidden = false;
       $("encryptBtn").disabled = false;
+      toast("PDF hazır.");
     } catch (err) {
-      toast("PDF okunamadı. Dosya bozuk veya zaten şifreli olabilir.", true);
+      console.error("PDF yükleme hatası:", err);
+      toast("PDF okunamadı: " + (err.message || "bozuk veya şifreli dosya"), true);
     }
   }
 
   $("encryptBtn").onclick = async () => {
     if (!state.bytes) return;
-    const lib = await ensurePdfLib();
+    const lib = await window.__getEncryptPdfLib();
     if (!lib) {
       toast("Şifreleme kütüphanesi bulunamadı.", true);
       return;
@@ -291,7 +331,7 @@
     try {
       const doc = await lib.PDFDocument.load(state.bytes);
       if (typeof doc.encrypt !== "function") {
-        throw new Error("Bu sürümde şifreleme metodu desteklenmiyor.");
+        throw new Error("Bu sürümde .encrypt() metodu bulunamadı.");
       }
 
       doc.encrypt({
@@ -319,6 +359,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 2000);
       toast("Şifreli PDF hazır, indirme başladı.");
     } catch (err) {
+      console.error("Şifreleme hatası:", err);
       toast("Şifreleme başarısız: " + (err.message || "hata"), true);
     } finally {
       btn.disabled = false;
