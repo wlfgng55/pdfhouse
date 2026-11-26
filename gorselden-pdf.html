@@ -31,7 +31,39 @@ h1{font-size:clamp(28px,4.2vw,42px);line-height:1.1;letter-spacing:-1.6px;margin
 .drop input{position:absolute;width:1px;height:1px;opacity:0}
 .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-top:16px}
 .item{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;gap:8px;cursor:grab}
-.item.drag{opacity:.4}.item.over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+
+.item{
+  transition:
+    transform .22s cubic-bezier(.2,.8,.2,1),
+    border-color .2s ease,
+    box-shadow .2s ease,
+    opacity .2s ease;
+  will-change: transform;
+}
+
+.item.drag{
+  opacity:.45;
+  transform:scale(.94) rotate(-2deg);
+  border:2px dashed var(--accent);
+  box-shadow:0 8px 24px rgba(91,61,245,.16);
+  cursor:grabbing;
+}
+
+.item.over{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft),0 8px 22px rgba(91,61,245,.12);
+  transform:scale(1.035);
+  z-index:2;
+}
+
+.item:active{
+  cursor:grabbing;
+}
+
+@media(prefers-reduced-motion:reduce){
+  .item{transition:none!important}
+}
+
 .thumb{height:120px;border-radius:9px;background:var(--bg);display:grid;place-items:center;overflow:hidden}
 .thumb img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .2s}
 .num{position:absolute;left:6px;top:6px;background:var(--accent);color:var(--accent-ink);font-size:11px;font-weight:800;min-width:22px;height:22px;border-radius:11px;display:grid;place-items:center;padding:0 6px}
@@ -130,10 +162,23 @@ h1{font-size:clamp(28px,4.2vw,42px);line-height:1.1;letter-spacing:-1.6px;margin
   }
 
   /* ---------- Liste ---------- */
-  function render() {
-    const box = $("list"); box.innerHTML = "";
+  
+function render(animate = false) {
+  const box = $("list");
+
+  // Eski fotoğraf konumlarını kaydet
+  const previous = animate
+    ? new Map([...box.children].map(el => [
+        el.dataset.id,
+        el.getBoundingClientRect()
+      ]))
+    : null;
+
+  box.innerHTML = "";
+
     items.forEach((it, i) => {
       const d = document.createElement("div"); d.className = "item"; d.draggable = true;
+      d.dataset.id = it.id;
       d.innerHTML = '<span class="num"></span><div class="thumb"><img alt=""></div><div class="nm"></div><div class="sz"></div>' +
         '<div class="acts"><button data-a="up" title="Öne al" aria-label="Öne al">←</button><button data-a="down" title="Geriye al" aria-label="Geriye al">→</button>' +
         '<button data-a="rot" title="Döndür" aria-label="Döndür">⟳</button><button class="del" data-a="del" title="Kaldır" aria-label="Kaldır">✕</button></div>';
@@ -143,13 +188,86 @@ h1{font-size:clamp(28px,4.2vw,42px);line-height:1.1;letter-spacing:-1.6px;margin
       d.querySelector(".sz").textContent = fmt(it.file.size);
       d.querySelector('[data-a="up"]').disabled = i === 0; d.querySelector('[data-a="down"]').disabled = i === items.length - 1;
       d.querySelectorAll("button").forEach((b) => (b.onclick = () => act(b.dataset.a, i)));
-      d.addEventListener("dragstart", () => { dragFrom = i; d.classList.add("drag"); });
-      d.addEventListener("dragend", () => { d.classList.remove("drag"); document.querySelectorAll(".item.over").forEach((x) => x.classList.remove("over")); });
-      d.addEventListener("dragover", (e) => { e.preventDefault(); d.classList.add("over"); });
-      d.addEventListener("dragleave", () => d.classList.remove("over"));
-      d.addEventListener("drop", (e) => { e.preventDefault(); if (dragFrom >= 0 && dragFrom !== i) { const [m] = items.splice(dragFrom, 1); items.splice(i, 0, m); } dragFrom = -1; render(); });
+     
+d.addEventListener("dragstart", (e) => {
+  if (busy) {
+    e.preventDefault();
+    return;
+  }
+
+  dragFrom = i;
+  d.classList.add("drag");
+
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", String(i));
+});
+
+d.addEventListener("dragend", () => {
+  dragFrom = -1;
+
+  document.querySelectorAll(".item").forEach(el => {
+    el.classList.remove("drag", "over");
+  });
+});
+
+d.addEventListener("dragover", (e) => {
+  e.preventDefault();
+
+  if (dragFrom < 0 || dragFrom === i) return;
+
+  e.dataTransfer.dropEffect = "move";
+  d.classList.add("over");
+});
+
+d.addEventListener("dragleave", (e) => {
+  if (!d.contains(e.relatedTarget)) {
+    d.classList.remove("over");
+  }
+});
+
+d.addEventListener("drop", (e) => {
+  e.preventDefault();
+
+  d.classList.remove("over");
+
+  if (busy || dragFrom < 0 || dragFrom === i) return;
+
+  // İki fotoğrafın yerini doğrudan değiştir
+  const from = dragFrom;
+  const to = i;
+
+  [items[from], items[to]] = [items[to], items[from]];
+
+  dragFrom = -1;
+
+  render(true);
+});
+
       box.appendChild(d);
     });
+  
+// Fotoğrafların yeni konumlarına kayarak geçmesi
+if (previous) {
+  [...box.children].forEach(el => {
+    const old = previous.get(el.dataset.id);
+    if (!old) return;
+
+    const now = el.getBoundingClientRect();
+    const dx = old.left - now.left;
+    const dy = old.top - now.top;
+
+    if (dx || dy) {
+      el.animate([
+        { transform: `translate(${dx}px, ${dy}px)` },
+        { transform: "translate(0, 0)" }
+      ], {
+        duration: 280,
+        easing: "cubic-bezier(.2,.8,.2,1)"
+      });
+    }
+  });
+}
+
     const total = items.reduce((s, x) => s + x.file.size, 0);
     $("summary").hidden = !items.length; $("summary").textContent = items.length + " görsel · toplam " + fmt(total);
     $("go").disabled = busy || !items.length; $("clear").disabled = busy || !items.length;
